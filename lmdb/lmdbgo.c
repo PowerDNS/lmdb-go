@@ -70,6 +70,14 @@ int lmdbgo_mdb_cursor_putmulti(MDB_cursor *cur, char *kdata, size_t kn, char *vd
     return mdb_cursor_put(cur, &key, &val[0], flags);
 }
 
+int lmdbgo_mdb_cursor_get0(MDB_cursor *cur, MDB_val *key, MDB_val *val, MDB_cursor_op op) {
+    return mdb_cursor_get(cur, key, val, op);
+}
+
+int lmdbgo_mdb_cursor_get0x(void *cur, MDB_val *key, MDB_val *val, MDB_cursor_op op) {
+    return mdb_cursor_get(cur, key, val, op);
+}
+
 int lmdbgo_mdb_cursor_get1(MDB_cursor *cur, char *kdata, size_t kn, MDB_val *key, MDB_val *val, MDB_cursor_op op) {
     LMDBGO_SET_VAL(key, kn, kdata);
     return mdb_cursor_get(cur, key, val, op);

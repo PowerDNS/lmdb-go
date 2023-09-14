@@ -19,7 +19,7 @@ type OpError struct {
 }
 
 // Error implements the error interface.
-func (err *OpError) Error() string {
+func (err OpError) Error() string {
 	return err.Op + ": " + err.Errno.Error()
 }
 
@@ -63,10 +63,10 @@ const (
 // Most often helper functions such as IsNotFound may be used instead of
 // dealing with Errno values directly.
 //
-//		lmdb.IsNotFound(err)
-//		lmdb.IsErrno(err, lmdb.TxnFull)
-//		lmdb.IsErrnoSys(err, syscall.EINVAL)
-//		lmdb.IsErrnoFn(err, os.IsPermission)
+//	lmdb.IsNotFound(err)
+//	lmdb.IsErrno(err, lmdb.TxnFull)
+//	lmdb.IsErrnoSys(err, syscall.EINVAL)
+//	lmdb.IsErrnoFn(err, os.IsPermission)
 type Errno C.int
 
 // minimum and maximum values produced for the Errno type. syscall.Errnos of
@@ -124,6 +124,9 @@ func IsErrnoFn(err error, fn func(error) bool) bool {
 		return false
 	}
 	if err, ok := err.(*OpError); ok {
+		return fn(err.Errno)
+	}
+	if err, ok := err.(OpError); ok {
 		return fn(err.Errno)
 	}
 	return fn(err)
