@@ -16,7 +16,7 @@ a CGO source file.  Using Go functions for comparison cannot be officially
 supported primarily due to inadequate speed, type checking problems, and
 reliance on unspecified behaviors.
 
-Details
+# Details
 
 The comparison function is defined in the source file compare.c.  The function
 is declared in the corresponding header file compare.h, included in by the CGO
@@ -35,6 +35,7 @@ package main
 #include "compare.h"
 */
 import "C"
+
 import (
 	"flag"
 	"fmt"
@@ -42,7 +43,7 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/bmatsuo/lmdb-go/lmdb"
+	"github.com/PowerDNS/lmdb-go/lmdb"
 )
 
 // BatchSize is the size of each update (additions or deletions).
