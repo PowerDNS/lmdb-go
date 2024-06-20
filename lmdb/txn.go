@@ -70,6 +70,8 @@ type Txn struct {
 	_txn *C.MDB_txn
 	key  *C.MDB_val
 	val  *C.MDB_val
+	keyV C.MDB_val
+	valV C.MDB_val
 
 	errLogf func(format string, v ...interface{})
 }

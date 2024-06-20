@@ -19,7 +19,7 @@ type OpError struct {
 }
 
 // Error implements the error interface.
-func (err *OpError) Error() string {
+func (err OpError) Error() string {
 	return err.Op + ": " + err.Errno.Error()
 }
 
@@ -124,6 +124,9 @@ func IsErrnoFn(err error, fn func(error) bool) bool {
 		return false
 	}
 	if err, ok := err.(*OpError); ok {
+		return fn(err.Errno)
+	}
+	if err, ok := err.(OpError); ok {
 		return fn(err.Errno)
 	}
 	return fn(err)
