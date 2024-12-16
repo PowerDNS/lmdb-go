@@ -7,6 +7,7 @@ package lmdb
 #include "lmdbgo.h"
 */
 import "C"
+
 import (
 	"runtime"
 	"unsafe"
