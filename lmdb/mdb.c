@@ -35,6 +35,9 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
+#ifdef __ANDROID__
+#define ANDROID __ANDROID__
+#endif
 #if defined(__WIN64__)
 #define _FILE_OFFSET_BITS	64
 #endif
