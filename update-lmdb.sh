@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Script to update our copy of the LMDB library and headers
-# Releases can be found here: https://github.com/LMDB/lmdb/releases
+# Releases can be found here: https://git.openldap.org/openldap/openldap/-/tags?sort=updated_desc&search=LMDB_
 #
 
 function get_define {
@@ -20,7 +20,7 @@ version="$1"
 
 if [ -z "$version" ]; then
     echo "USAGE: $0 <desired-version>"
-    echo "Check https://github.com/LMDB/lmdb/releases for available versions"
+    echo "Check https://git.openldap.org/openldap/openldap/-/tags?sort=updated_desc&search=LMDB_ for available versions"
     exit 1
 fi
 
@@ -29,10 +29,10 @@ set -ex
 tmp_dir=$(mktemp -d -t lmdb-update)
 echo "Temp dir: $tmp_dir"
  
-curl -L "https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_${version}.tar.gz" | tar -C "$tmp_dir" -xvz
-cp "$tmp_dir/lmdb-LMDB_${version}/libraries/liblmdb/mdb.c" lmdb/mdb.c
-cp "$tmp_dir/lmdb-LMDB_${version}/libraries/liblmdb/lmdb.h" lmdb/lmdb.h
-cp "$tmp_dir/lmdb-LMDB_${version}/libraries/liblmdb/CHANGES" CHANGES.lmdb.txt
+curl -L "https://git.openldap.org/openldap/openldap/-/archive/LMDB_${version}/openldap-LMDB_${version}.tar.gz" | tar -C "$tmp_dir" -xvz
+cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/mdb.c" lmdb/mdb.c
+cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/lmdb.h" lmdb/lmdb.h
+cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/CHANGES" CHANGES.lmdb.txt
  
 if [ ! -z "$tmp_dir" ]; then 
     echo "Removing temp dir: $tmp_dir"
