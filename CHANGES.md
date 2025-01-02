@@ -1,5 +1,31 @@
 # Release Change Log
 
+## v1.9.3 (2025-01-02)
+
+## What's Changed
+
+* Upgrade LMDB to 0.9.33 & use official OpenLDAP repo as source for updates by @wojas in https://github.com/PowerDNS/lmdb-go/pull/35
+* macOS: fix unknown warning -Wno-stringop-overflow by @wojas in https://github.com/PowerDNS/lmdb-go/pull/38
+* CI: minimum CI Go version 1.22 to fix error by @wojas in https://github.com/PowerDNS/lmdb-go/pull/37
+* Update docs for v1.9.2 & document release process by @wojas in https://github.com/PowerDNS/lmdb-go/pull/30
+
+Thanks to @igor35hh @shane-ns1 @fiatjaf for issue reports and suggestions.
+
+LMDB C library changes:
+
+        LMDB 0.9.33 Release (2024/05/21)
+               ITS#9037 mdb_page_search: fix error code when DBI record is missing
+               ITS#10198 For win32, stop passing ignored parameter
+               ITS#10212 Fix meta page usage by read only tools
+
+        LMDB 0.9.32 Release (2024/01/29)
+               ITS#9378 - Add ability to replay log and replay log tool
+               ITS#10095 - partial revert of ITS#9278. The patch was incorrect and introduced numerous race conditions.
+               ITS#10125 - mdb_load: fix cursor reinit in Append mode
+               ITS#10137 - Allow users to define MDB_IDL_LOGN
+
+**Full Changelog**: https://github.com/PowerDNS/lmdb-go/compare/v1.9.2...v1.9.3
+
 ## v1.9.2 (2023-12-07)
 
 ## What's Changed
