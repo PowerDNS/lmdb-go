@@ -58,14 +58,16 @@ const (
 // database.
 //
 // See MDB_cursor.
+// The engine selector is read via c.txn.ver rather than stored on the Cursor:
+// it keeps the struct at 16 bytes (one alloc size class smaller) and cannot go
+// stale when Renew rebinds the cursor to another transaction.
 type Cursor struct {
 	txn *Txn
-	ver C.int // engine selector, copied from txn
 	_c  *C.MDB_cursor
 }
 
 func openCursor(txn *Txn, db DBI) (*Cursor, error) {
-	c := &Cursor{txn: txn, ver: txn.ver}
+	c := &Cursor{txn: txn}
 	ret := C.lmdbgo2_mdb_cursor_open(txn.ver, txn._txn, C.MDB_dbi(db), &c._c)
 	if ret != success {
 		return nil, operrno("mdb_cursor_open", ret)
@@ -77,6 +79,9 @@ func openCursor(txn *Txn, db DBI) (*Cursor, error) {
 //
 // See mdb_cursor_renew.
 func (c *Cursor) Renew(txn *Txn) error {
+	if c._c == nil {
+		return errClosedCursor("mdb_cursor_renew")
+	}
 	ret := C.lmdbgo2_mdb_cursor_renew(txn.ver, txn._txn, c._c)
 	err := operrno("mdb_cursor_renew", ret)
 	if err != nil {
@@ -91,7 +96,7 @@ func (c *Cursor) close() bool {
 		if c.txn._txn == nil && !c.txn.readonly {
 			// the cursor has already been released by LMDB.
 		} else {
-			C.lmdbgo2_mdb_cursor_close(c.ver, c._c)
+			C.lmdbgo2_mdb_cursor_close(c.txn.ver, c._c)
 		}
 		c.txn = nil
 		c._c = nil
@@ -129,7 +134,7 @@ func (c *Cursor) DBI() DBI {
 	if c._c == nil {
 		return dbiInvalid
 	}
-	return DBI(C.lmdbgo2_mdb_cursor_dbi(c.ver, c._c))
+	return DBI(C.lmdbgo2_mdb_cursor_dbi(c.txn.ver, c._c))
 }
 
 // Get retrieves items from the database. If c.Txn().RawRead is true the slices
@@ -145,6 +150,9 @@ func (c *Cursor) DBI() DBI {
 //
 // See mdb_cursor_get.
 func (c *Cursor) Get(setkey, setval []byte, op uint) (key, val []byte, err error) {
+	if c.txn == nil {
+		return nil, nil, errClosedCursor("mdb_cursor_get")
+	}
 	switch {
 	case len(setkey) == 0:
 		err = c.getVal0(op)
@@ -189,7 +197,7 @@ func (c *Cursor) Get(setkey, setval []byte, op uint) (key, val []byte, err error
 //
 // See mdb_cursor_get.
 func (c *Cursor) getVal0(op uint) error {
-	ret := C.lmdbgo2_mdb_cursor_get(c.ver, c._c, c.txn.key, c.txn.val, C.MDB_cursor_op(op))
+	ret := C.lmdbgo2_mdb_cursor_get(c.txn.ver, c._c, c.txn.key, c.txn.val, C.MDB_cursor_op(op))
 	return operrno("mdb_cursor_get", ret)
 }
 
@@ -199,7 +207,7 @@ func (c *Cursor) getVal0(op uint) error {
 // See mdb_cursor_get.
 func (c *Cursor) getVal1(setkey []byte, op uint) error {
 	ret := C.lmdbgo2_mdb_cursor_get1(
-		c.ver, c._c,
+		c.txn.ver, c._c,
 		(*C.char)(unsafe.Pointer(&setkey[0])), C.size_t(len(setkey)),
 		c.txn.key, c.txn.val,
 		C.MDB_cursor_op(op),
@@ -213,7 +221,7 @@ func (c *Cursor) getVal1(setkey []byte, op uint) error {
 // See mdb_cursor_get.
 func (c *Cursor) getVal2(setkey, setval []byte, op uint) error {
 	ret := C.lmdbgo2_mdb_cursor_get2(
-		c.ver, c._c,
+		c.txn.ver, c._c,
 		(*C.char)(unsafe.Pointer(&setkey[0])), C.size_t(len(setkey)),
 		(*C.char)(unsafe.Pointer(&setval[0])), C.size_t(len(setval)),
 		c.txn.key, c.txn.val,
@@ -223,7 +231,7 @@ func (c *Cursor) getVal2(setkey, setval []byte, op uint) error {
 }
 
 func (c *Cursor) putNilKey(flags uint) error {
-	ret := C.lmdbgo2_mdb_cursor_put2(c.ver, c._c, nil, 0, nil, 0, C.uint(flags))
+	ret := C.lmdbgo2_mdb_cursor_put2(c.txn.ver, c._c, nil, 0, nil, 0, C.uint(flags))
 	return operrno("mdb_cursor_put", ret)
 }
 
@@ -231,6 +239,9 @@ func (c *Cursor) putNilKey(flags uint) error {
 //
 // See mdb_cursor_put.
 func (c *Cursor) Put(key, val []byte, flags uint) error {
+	if c.txn == nil {
+		return errClosedCursor("mdb_cursor_put")
+	}
 	kn := len(key)
 	if kn == 0 {
 		return c.putNilKey(flags)
@@ -240,7 +251,7 @@ func (c *Cursor) Put(key, val []byte, flags uint) error {
 		val = []byte{0}
 	}
 	ret := C.lmdbgo2_mdb_cursor_put2(
-		c.ver, c._c,
+		c.txn.ver, c._c,
 		(*C.char)(unsafe.Pointer(&key[0])), C.size_t(kn),
 		(*C.char)(unsafe.Pointer(&val[0])), C.size_t(vn),
 		C.uint(flags),
@@ -252,13 +263,16 @@ func (c *Cursor) Put(key, val []byte, flags uint) error {
 // avoiding a memcopy.  The returned byte slice is only valid in txn's thread,
 // before it has terminated.
 func (c *Cursor) PutReserve(key []byte, n int, flags uint) ([]byte, error) {
+	if c.txn == nil {
+		return nil, errClosedCursor("mdb_cursor_put")
+	}
 	if len(key) == 0 {
 		return nil, c.putNilKey(flags)
 	}
 
 	c.txn.val.mv_size = C.size_t(n)
 	ret := C.lmdbgo2_mdb_cursor_put1(
-		c.ver, c._c,
+		c.txn.ver, c._c,
 		(*C.char)(unsafe.Pointer(&key[0])), C.size_t(len(key)),
 		c.txn.val,
 		C.uint(flags|C.MDB_RESERVE),
@@ -279,6 +293,9 @@ func (c *Cursor) PutReserve(key []byte, n int, flags uint) ([]byte, error) {
 //
 // See mdb_cursor_put.
 func (c *Cursor) PutMulti(key []byte, page []byte, stride int, flags uint) error {
+	if c.txn == nil {
+		return errClosedCursor("mdb_cursor_put")
+	}
 	if len(key) == 0 {
 		return c.putNilKey(flags)
 	}
@@ -288,7 +305,7 @@ func (c *Cursor) PutMulti(key []byte, page []byte, stride int, flags uint) error
 
 	vn := WrapMulti(page, stride).Len()
 	ret := C.lmdbgo2_mdb_cursor_putmulti(
-		c.ver, c._c,
+		c.txn.ver, c._c,
 		(*C.char)(unsafe.Pointer(&key[0])), C.size_t(len(key)),
 		(*C.char)(unsafe.Pointer(&page[0])), C.size_t(vn), C.size_t(stride),
 		C.uint(flags|C.MDB_MULTIPLE),
@@ -300,7 +317,10 @@ func (c *Cursor) PutMulti(key []byte, page []byte, stride int, flags uint) error
 //
 // See mdb_cursor_del.
 func (c *Cursor) Del(flags uint) error {
-	ret := C.lmdbgo2_mdb_cursor_del(c.ver, c._c, C.uint(flags))
+	if c.txn == nil {
+		return errClosedCursor("mdb_cursor_del")
+	}
+	ret := C.lmdbgo2_mdb_cursor_del(c.txn.ver, c._c, C.uint(flags))
 	return operrno("mdb_cursor_del", ret)
 }
 
@@ -308,8 +328,11 @@ func (c *Cursor) Del(flags uint) error {
 //
 // See mdb_cursor_count.
 func (c *Cursor) Count() (uint64, error) {
+	if c.txn == nil {
+		return 0, errClosedCursor("mdb_cursor_count")
+	}
 	var _size C.size_t
-	ret := C.lmdbgo2_mdb_cursor_count(c.ver, c._c, &_size)
+	ret := C.lmdbgo2_mdb_cursor_count(c.txn.ver, c._c, &_size)
 	if ret != success {
 		return 0, operrno("mdb_cursor_count", ret)
 	}

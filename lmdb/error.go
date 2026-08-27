@@ -83,6 +83,14 @@ func _operrno(op string, ret int) error {
 	return operrno(op, C.int(ret))
 }
 
+// errClosedCursor is returned for operations on a closed Cursor handle.  LMDB
+// 0.9 returned EINVAL when handed a NULL cursor pointer; the Go layer performs
+// the check instead because nil handles must never reach the C engines (LMDB
+// 1.0 dereferences them unconditionally).
+func errClosedCursor(op string) error {
+	return &OpError{Op: op, Errno: syscall.EINVAL}
+}
+
 // IsNotFound returns true if the key requested in Txn.Get or Cursor.Get does
 // not exist or if the Cursor reached the end of the database without locating
 // a value (EOF).
