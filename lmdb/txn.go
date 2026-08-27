@@ -58,6 +58,11 @@ type Txn struct {
 	managed  bool
 	readonly bool
 
+	// ver is the engine selector, copied from env. It sits right after the
+	// bools to fill their padding: it keeps the struct at 64 bytes, one
+	// allocation size class smaller.
+	ver C.int
+
 	// The value of Txn.ID() is cached so that the cost of cgo does not have to
 	// be paid.  The id of a Txn cannot change over its life, even if it is
 	// reset/renewed
@@ -67,7 +72,6 @@ type Txn struct {
 	cbuf unsafe.Pointer
 
 	env  *Env
-	ver  C.int // engine selector, copied from env
 	_txn *C.MDB_txn
 	key  *C.MDB_val
 	val  *C.MDB_val
