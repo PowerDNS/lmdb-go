@@ -54,6 +54,21 @@ const (
 	BadTxn          Errno = C.MDB_BAD_TXN
 	BadValSize      Errno = C.MDB_BAD_VALSIZE
 	BadDBI          Errno = C.MDB_BAD_DBI
+
+	// Error codes introduced by LMDB 1.0. The constants come from the
+	// canonical 1.0 header and are always defined; the 0.9 engine simply
+	// never returns them.
+	Problem       Errno = C.MDB_PROBLEM
+	BadChecksum   Errno = C.MDB_BAD_CHECKSUM
+	CryptoFail    Errno = C.MDB_CRYPTO_FAIL
+	EnvEncryption Errno = C.MDB_ENV_ENCRYPTION
+	TxnPending    Errno = C.MDB_TXN_PENDING
+	CantRollback  Errno = C.MDB_CANT_ROLLBACK
+	DBIsBusy      Errno = C.MDB_DBIS_BUSY
+	ShortWrite    Errno = C.MDB_SHORT_WRITE
+	EnvBusy       Errno = C.MDB_ENV_BUSY
+	IsReadonly    Errno = C.MDB_IS_READONLY
+	AddrBusy      Errno = C.MDB_ADDR_BUSY
 )
 
 // Errno is an error type that represents the (unique) errno values defined by

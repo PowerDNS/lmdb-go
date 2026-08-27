@@ -9761,7 +9761,16 @@ void
 mdb_cursor_close(MDB_cursor *mc)
 {
 	MDB_TRACE(("%p", mc));
-	if (mc) {
+	if (mc && (mc->mc_flags & C_UNTRACK)) {
+		/* lmdb-go patch cursor-close-after-txn: only tracked (write-txn)
+		 * cursors are guaranteed a live mc_txn here. Closing a read-only
+		 * cursor after its txn ended is documented as legal, but the
+		 * MDB_CURSOR_UNREF condition reads mc_txn->mt_env->me_flags and
+		 * was a use-after-free in that case. For untracked cursors the
+		 * unref is skipped: without MDB_REMAP_CHUNKS it was a no-op, and
+		 * with it a live read-only txn merely keeps its page refs until
+		 * reset/renew/end.
+		 */
 		MDB_CURSOR_UNREF(mc, 0);
 	}
 	if (mc && !mc->mc_backup) {
