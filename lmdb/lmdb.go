@@ -131,25 +131,33 @@ package lmdb
 #cgo linux,pwritev CFLAGS: -DMDB_USE_PWRITEV
 
 #include "lmdb.h"
+#include "lmdbgo.h"
 */
 import "C"
 
 // Version return the major, minor, and patch version numbers of the LMDB C
 // library and a string representation of the version.
 //
+// Two LMDB engines are bundled in this package; Version reports the canonical
+// surface (the newest bundled engine), so code gating LMDB 1.0 workarounds on
+// major >= 1 stays safe. The engine actually driving a particular environment
+// is reported per Env.
+//
 // See mdb_version.
 func Version() (major, minor, patch int, s string) {
 	var maj, min, pat C.int
-	verstr := C.mdb_version(&maj, &min, &pat)
+	verstr := C.lmdbgo2_mdb_version(10, &maj, &min, &pat)
 	return int(maj), int(min), int(pat), C.GoString(verstr)
 }
 
 // VersionString returns a string representation of the LMDB C library version.
 //
+// See Version for how the two bundled engines are reported.
+//
 // See mdb_version.
 func VersionString() string {
 	var maj, min, pat C.int
-	verstr := C.mdb_version(&maj, &min, &pat)
+	verstr := C.lmdbgo2_mdb_version(10, &maj, &min, &pat)
 	return C.GoString(verstr)
 }
 

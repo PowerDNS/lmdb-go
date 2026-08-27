@@ -67,6 +67,7 @@ type Txn struct {
 	cbuf unsafe.Pointer
 
 	env  *Env
+	ver  C.int // engine selector, copied from env
 	_txn *C.MDB_txn
 	key  *C.MDB_val
 	val  *C.MDB_val
@@ -80,6 +81,7 @@ func beginTxn(env *Env, parent *Txn, flags uint) (*Txn, error) {
 	txn := &Txn{
 		readonly: (flags&Readonly != 0),
 		env:      env,
+		ver:      env.ver,
 	}
 
 	var ptxn *C.MDB_txn
@@ -112,7 +114,7 @@ func beginTxn(env *Env, parent *Txn, flags uint) (*Txn, error) {
 		txn.key = parent.key
 		txn.val = parent.val
 	}
-	ret := C.mdb_txn_begin(env._env, ptxn, C.uint(flags), &txn._txn)
+	ret := C.lmdbgo2_mdb_txn_begin(env.ver, env._env, ptxn, C.uint(flags), &txn._txn)
 	if ret != success {
 		return nil, operrno("mdb_txn_begin", ret)
 	}
@@ -128,7 +130,7 @@ func (txn *Txn) ID() uintptr {
 	// It is possible for a txn to legitimately have ID 0 if it a readonly txn
 	// created before any updates.  In practice this does not really happen
 	// because an application typically must do an initial update to initialize
-	// application dbis.  Even so, calling C.mdb_txn_id excessively isn't
+	// application dbis.  Even so, calling C.lmdbgo2_mdb_txn_id excessively isn't
 	// actually harmful, it is just slow.
 	if txn.id == 0 {
 		txn.id = txn.getID()
@@ -138,7 +140,7 @@ func (txn *Txn) ID() uintptr {
 }
 
 func (txn *Txn) getID() uintptr {
-	return uintptr(C.mdb_txn_id(txn._txn))
+	return uintptr(C.lmdbgo2_mdb_txn_id(txn.ver, txn._txn))
 }
 
 // RunOp executes fn with txn as an argument.  During the execution of fn no
@@ -206,7 +208,7 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) commit() error {
-	ret := C.mdb_txn_commit(txn._txn)
+	ret := C.lmdbgo2_mdb_txn_commit(txn.ver, txn._txn)
 	txn.clearTxn()
 	return operrno("mdb_txn_commit", ret)
 }
@@ -233,7 +235,7 @@ func (txn *Txn) abort() {
 	// txn.env **should** terminate all readers otherwise when it closes.
 	txn.env.closeLock.RLock()
 	if txn.env._env != nil {
-		C.mdb_txn_abort(txn._txn)
+		C.lmdbgo2_mdb_txn_abort(txn.ver, txn._txn)
 	}
 	txn.env.closeLock.RUnlock()
 
@@ -283,7 +285,7 @@ func (txn *Txn) Reset() {
 }
 
 func (txn *Txn) reset() {
-	C.mdb_txn_reset(txn._txn)
+	C.lmdbgo2_mdb_txn_reset(txn.ver, txn._txn)
 }
 
 // Renew reuses a transaction that was previously reset by calling txn.Reset().
@@ -299,7 +301,7 @@ func (txn *Txn) Renew() error {
 }
 
 func (txn *Txn) renew() error {
-	ret := C.mdb_txn_renew(txn._txn)
+	ret := C.lmdbgo2_mdb_txn_renew(txn.ver, txn._txn)
 
 	// mdb_txn_renew causes txn._txn to pick up a new transaction ID.  It's
 	// slightly confusing in the LMDB docs.  Txn ID corresponds to database
@@ -340,7 +342,7 @@ func (txn *Txn) CreateDBI(name string) (DBI, error) {
 // Flags returns the database flags for handle dbi.
 func (txn *Txn) Flags(dbi DBI) (uint, error) {
 	var cflags C.uint
-	ret := C.mdb_dbi_flags(txn._txn, C.MDB_dbi(dbi), (*C.uint)(&cflags))
+	ret := C.lmdbgo2_mdb_dbi_flags(txn.ver, txn._txn, C.MDB_dbi(dbi), (*C.uint)(&cflags))
 	return uint(cflags), operrno("mdb_dbi_flags", ret)
 }
 
@@ -358,7 +360,7 @@ func (txn *Txn) OpenRoot(flags uint) (DBI, error) {
 // database.
 func (txn *Txn) openDBI(cname *C.char, flags uint) (DBI, error) {
 	var dbi C.MDB_dbi
-	ret := C.mdb_dbi_open(txn._txn, cname, C.uint(flags), &dbi)
+	ret := C.lmdbgo2_mdb_dbi_open(txn.ver, txn._txn, cname, C.uint(flags), &dbi)
 	return DBI(dbi), operrno("mdb_dbi_open", ret)
 }
 
@@ -367,7 +369,7 @@ func (txn *Txn) openDBI(cname *C.char, flags uint) (DBI, error) {
 // See mdb_stat.
 func (txn *Txn) Stat(dbi DBI) (*Stat, error) {
 	var _stat C.MDB_stat
-	ret := C.mdb_stat(txn._txn, C.MDB_dbi(dbi), &_stat)
+	ret := C.lmdbgo2_mdb_stat(txn.ver, txn._txn, C.MDB_dbi(dbi), &_stat)
 	if ret != success {
 		return nil, operrno("mdb_stat", ret)
 	}
@@ -385,7 +387,7 @@ func (txn *Txn) Stat(dbi DBI) (*Stat, error) {
 //
 // See mdb_drop.
 func (txn *Txn) Drop(dbi DBI, del bool) error {
-	ret := C.mdb_drop(txn._txn, C.MDB_dbi(dbi), cbool(del))
+	ret := C.lmdbgo2_mdb_drop(txn.ver, txn._txn, C.MDB_dbi(dbi), cbool(del))
 	return operrno("mdb_drop", ret)
 }
 
@@ -434,8 +436,8 @@ func (txn *Txn) bytes(val *C.MDB_val) []byte {
 // See mdb_get.
 func (txn *Txn) Get(dbi DBI, key []byte) ([]byte, error) {
 	kdata, kn := valBytes(key)
-	ret := C.lmdbgo_mdb_get(
-		txn._txn, C.MDB_dbi(dbi),
+	ret := C.lmdbgo2_mdb_get(
+		txn.ver, txn._txn, C.MDB_dbi(dbi),
 		(*C.char)(unsafe.Pointer(&kdata[0])), C.size_t(kn),
 		txn.val,
 	)
@@ -451,7 +453,7 @@ func (txn *Txn) Get(dbi DBI, key []byte) ([]byte, error) {
 
 func (txn *Txn) putNilKey(dbi DBI, flags uint) error {
 	// mdb_put with an empty key will always fail
-	ret := C.lmdbgo_mdb_put2(txn._txn, C.MDB_dbi(dbi), nil, 0, nil, 0, C.uint(flags))
+	ret := C.lmdbgo2_mdb_put2(txn.ver, txn._txn, C.MDB_dbi(dbi), nil, 0, nil, 0, C.uint(flags))
 	return operrno("mdb_put", ret)
 }
 
@@ -468,8 +470,8 @@ func (txn *Txn) Put(dbi DBI, key []byte, val []byte, flags uint) error {
 		val = []byte{0}
 	}
 
-	ret := C.lmdbgo_mdb_put2(
-		txn._txn, C.MDB_dbi(dbi),
+	ret := C.lmdbgo2_mdb_put2(
+		txn.ver, txn._txn, C.MDB_dbi(dbi),
 		(*C.char)(unsafe.Pointer(&key[0])), C.size_t(kn),
 		(*C.char)(unsafe.Pointer(&val[0])), C.size_t(vn),
 		C.uint(flags),
@@ -485,8 +487,8 @@ func (txn *Txn) PutReserve(dbi DBI, key []byte, n int, flags uint) ([]byte, erro
 		return nil, txn.putNilKey(dbi, flags)
 	}
 	txn.val.mv_size = C.size_t(n)
-	ret := C.lmdbgo_mdb_put1(
-		txn._txn, C.MDB_dbi(dbi),
+	ret := C.lmdbgo2_mdb_put1(
+		txn.ver, txn._txn, C.MDB_dbi(dbi),
 		(*C.char)(unsafe.Pointer(&key[0])), C.size_t(len(key)),
 		txn.val,
 		C.uint(flags|C.MDB_RESERVE),
@@ -508,8 +510,8 @@ func (txn *Txn) PutReserve(dbi DBI, key []byte, n int, flags uint) ([]byte, erro
 func (txn *Txn) Del(dbi DBI, key, val []byte) error {
 	kdata, kn := valBytes(key)
 	vdata, vn := valBytes(val)
-	ret := C.lmdbgo_mdb_del(
-		txn._txn, C.MDB_dbi(dbi),
+	ret := C.lmdbgo2_mdb_del(
+		txn.ver, txn._txn, C.MDB_dbi(dbi),
 		(*C.char)(unsafe.Pointer(&kdata[0])), C.size_t(kn),
 		(*C.char)(unsafe.Pointer(&vdata[0])), C.size_t(vn),
 	)

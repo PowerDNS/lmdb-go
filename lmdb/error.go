@@ -2,6 +2,7 @@ package lmdb
 
 /*
 #include "lmdb.h"
+#include "lmdbgo.h"
 */
 import "C"
 
@@ -74,7 +75,7 @@ type Errno C.int
 const minErrno, maxErrno C.int = C.MDB_KEYEXIST, C.MDB_LAST_ERRCODE
 
 func (e Errno) Error() string {
-	return C.GoString(C.mdb_strerror(C.int(e)))
+	return C.GoString(C.lmdbgo2_mdb_strerror(C.int(e)))
 }
 
 // _operrno is for use by tests that can't import C

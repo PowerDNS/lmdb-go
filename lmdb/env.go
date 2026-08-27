@@ -64,6 +64,11 @@ type DBI C.MDB_dbi
 type Env struct {
 	_env *C.MDB_env
 
+	// ver selects the LMDB engine (9 or 10) driving this environment; it is
+	// passed to every lmdbgo2_* dispatch shim and copied into every Txn and
+	// Cursor created from this Env.
+	ver C.int
+
 	// closeLock is used to allow the Txn finalizer to check if the Env has
 	// been closed, so that it may know if it must abort.
 	closeLock sync.RWMutex
@@ -77,7 +82,8 @@ type Env struct {
 // See mdb_env_create.
 func NewEnv() (*Env, error) {
 	env := new(Env)
-	ret := C.mdb_env_create(&env._env)
+	env.ver = 9 // engine selection lands with the sniffing stage
+	ret := C.lmdbgo2_mdb_env_create(env.ver, &env._env)
 	if ret != success {
 		return nil, operrno("mdb_env_create", ret)
 	}
@@ -95,7 +101,7 @@ func NewEnv() (*Env, error) {
 func (env *Env) Open(path string, flags uint, mode os.FileMode) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	ret := C.mdb_env_open(env._env, cpath, C.uint(NoTLS|flags), C.mdb_mode_t(mode))
+	ret := C.lmdbgo2_mdb_env_open(env.ver, env._env, cpath, C.uint(NoTLS|flags), C.mdb_mode_t(mode))
 	return operrno("mdb_env_open", ret)
 }
 
@@ -114,7 +120,7 @@ func (env *Env) FD() (uintptr, error) {
 	const fdInvalid = ^uintptr(0)
 
 	var mf C.mdb_filehandle_t
-	ret := C.mdb_env_get_fd(env._env, &mf)
+	ret := C.lmdbgo2_mdb_env_get_fd(env.ver, env._env, &mf)
 	err := operrno("mdb_env_get_fd", ret)
 	if err != nil {
 		return 0, err
@@ -139,7 +145,7 @@ func (env *Env) ReaderList(fn func(string) error) error {
 		ctx = 0
 	}
 
-	ret := C.lmdbgo_mdb_reader_list(env._env, C.size_t(ctx))
+	ret := C.lmdbgo2_mdb_reader_list(env.ver, env._env, C.size_t(ctx))
 	if ret >= 0 {
 		return nil
 	}
@@ -158,7 +164,7 @@ func (env *Env) ReaderList(fn func(string) error) error {
 // See mdb_reader_check()
 func (env *Env) ReaderCheck() (int, error) {
 	var _dead C.int
-	ret := C.mdb_reader_check(env._env, &_dead)
+	ret := C.lmdbgo2_mdb_reader_check(env.ver, env._env, &_dead)
 	return int(_dead), operrno("mdb_reader_check", ret)
 }
 
@@ -168,7 +174,7 @@ func (env *Env) close() bool {
 	}
 
 	env.closeLock.Lock()
-	C.mdb_env_close(env._env)
+	C.lmdbgo2_mdb_env_close(env.ver, env._env)
 	env._env = nil
 	env.closeLock.Unlock()
 
@@ -195,7 +201,7 @@ func (env *Env) Close() error {
 //
 // See mdb_env_copyfd.
 func (env *Env) CopyFD(fd uintptr) error {
-	ret := C.mdb_env_copyfd(env._env, C.mdb_filehandle_t(fd))
+	ret := C.lmdbgo2_mdb_env_copyfd(env.ver, env._env, C.mdb_filehandle_t(fd))
 	return operrno("mdb_env_copyfd", ret)
 }
 
@@ -203,7 +209,7 @@ func (env *Env) CopyFD(fd uintptr) error {
 //
 // See mdb_env_copyfd2.
 func (env *Env) CopyFDFlag(fd uintptr, flags uint) error {
-	ret := C.mdb_env_copyfd2(env._env, C.mdb_filehandle_t(fd), C.uint(flags))
+	ret := C.lmdbgo2_mdb_env_copyfd2(env.ver, env._env, C.mdb_filehandle_t(fd), C.uint(flags))
 	return operrno("mdb_env_copyfd2", ret)
 }
 
@@ -213,7 +219,7 @@ func (env *Env) CopyFDFlag(fd uintptr, flags uint) error {
 func (env *Env) Copy(path string) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	ret := C.mdb_env_copy(env._env, cpath)
+	ret := C.lmdbgo2_mdb_env_copy(env.ver, env._env, cpath)
 	return operrno("mdb_env_copy", ret)
 }
 
@@ -223,7 +229,7 @@ func (env *Env) Copy(path string) error {
 func (env *Env) CopyFlag(path string, flags uint) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	ret := C.mdb_env_copy2(env._env, cpath, C.uint(flags))
+	ret := C.lmdbgo2_mdb_env_copy2(env.ver, env._env, cpath, C.uint(flags))
 	return operrno("mdb_env_copy2", ret)
 }
 
@@ -244,7 +250,7 @@ type Stat struct {
 // See mdb_env_stat.
 func (env *Env) Stat() (*Stat, error) {
 	var _stat C.MDB_stat
-	ret := C.mdb_env_stat(env._env, &_stat)
+	ret := C.lmdbgo2_mdb_env_stat(env.ver, env._env, &_stat)
 	if ret != success {
 		return nil, operrno("mdb_env_stat", ret)
 	}
@@ -273,7 +279,7 @@ type EnvInfo struct {
 // See mdb_env_info.
 func (env *Env) Info() (*EnvInfo, error) {
 	var _info C.MDB_envinfo
-	ret := C.mdb_env_info(env._env, &_info)
+	ret := C.lmdbgo2_mdb_env_info(env.ver, env._env, &_info)
 	if ret != success {
 		return nil, operrno("mdb_env_info", ret)
 	}
@@ -292,7 +298,7 @@ func (env *Env) Info() (*EnvInfo, error) {
 //
 // See mdb_env_sync.
 func (env *Env) Sync(force bool) error {
-	ret := C.mdb_env_sync(env._env, cbool(force))
+	ret := C.lmdbgo2_mdb_env_sync(env.ver, env._env, cbool(force))
 	return operrno("mdb_env_sync", ret)
 }
 
@@ -300,7 +306,7 @@ func (env *Env) Sync(force bool) error {
 //
 // See mdb_env_set_flags.
 func (env *Env) SetFlags(flags uint) error {
-	ret := C.mdb_env_set_flags(env._env, C.uint(flags), C.int(1))
+	ret := C.lmdbgo2_mdb_env_set_flags(env.ver, env._env, C.uint(flags), C.int(1))
 	return operrno("mdb_env_set_flags", ret)
 }
 
@@ -308,7 +314,7 @@ func (env *Env) SetFlags(flags uint) error {
 //
 // See mdb_env_set_flags.
 func (env *Env) UnsetFlags(flags uint) error {
-	ret := C.mdb_env_set_flags(env._env, C.uint(flags), C.int(0))
+	ret := C.lmdbgo2_mdb_env_set_flags(env.ver, env._env, C.uint(flags), C.int(0))
 	return operrno("mdb_env_set_flags", ret)
 }
 
@@ -317,7 +323,7 @@ func (env *Env) UnsetFlags(flags uint) error {
 // See mdb_env_get_flags.
 func (env *Env) Flags() (uint, error) {
 	var _flags C.uint
-	ret := C.mdb_env_get_flags(env._env, &_flags)
+	ret := C.lmdbgo2_mdb_env_get_flags(env.ver, env._env, &_flags)
 	if ret != success {
 		return 0, operrno("mdb_env_get_flags", ret)
 	}
@@ -330,7 +336,7 @@ func (env *Env) Flags() (uint, error) {
 // See mdb_env_get_path.
 func (env *Env) Path() (string, error) {
 	var cpath *C.char
-	ret := C.mdb_env_get_path(env._env, &cpath)
+	ret := C.lmdbgo2_mdb_env_get_path(env.ver, env._env, &cpath)
 	if ret != success {
 		return "", operrno("mdb_env_get_path", ret)
 	}
@@ -347,7 +353,7 @@ func (env *Env) SetMapSize(size int64) error {
 	if size < 0 {
 		return errNegSize
 	}
-	ret := C.mdb_env_set_mapsize(env._env, C.size_t(size))
+	ret := C.lmdbgo2_mdb_env_set_mapsize(env.ver, env._env, C.size_t(size))
 	return operrno("mdb_env_set_mapsize", ret)
 }
 
@@ -358,7 +364,7 @@ func (env *Env) SetMaxReaders(size int) error {
 	if size < 0 {
 		return errNegSize
 	}
-	ret := C.mdb_env_set_maxreaders(env._env, C.uint(size))
+	ret := C.lmdbgo2_mdb_env_set_maxreaders(env.ver, env._env, C.uint(size))
 	return operrno("mdb_env_set_maxreaders", ret)
 }
 
@@ -367,7 +373,7 @@ func (env *Env) SetMaxReaders(size int) error {
 // See mdb_env_get_maxreaders.
 func (env *Env) MaxReaders() (int, error) {
 	var max C.uint
-	ret := C.mdb_env_get_maxreaders(env._env, &max)
+	ret := C.lmdbgo2_mdb_env_get_maxreaders(env.ver, env._env, &max)
 	return int(max), operrno("mdb_env_get_maxreaders", ret)
 }
 
@@ -376,9 +382,12 @@ func (env *Env) MaxReaders() (int, error) {
 // See mdb_env_get_maxkeysize.
 func (env *Env) MaxKeySize() int {
 	if env == nil {
-		return int(C.mdb_env_get_maxkeysize(nil))
+		// Both engines default to 511. This cannot dispatch without an env,
+		// and LMDB 1.0's mdb_env_get_maxkeysize dereferences its argument,
+		// so nil must never reach C here.
+		return 511
 	}
-	return int(C.mdb_env_get_maxkeysize(env._env))
+	return int(C.lmdbgo2_mdb_env_get_maxkeysize(env.ver, env._env))
 }
 
 // SetMaxDBs sets the maximum number of named databases for the environment.
@@ -388,7 +397,7 @@ func (env *Env) SetMaxDBs(size int) error {
 	if size < 0 {
 		return errNegSize
 	}
-	ret := C.mdb_env_set_maxdbs(env._env, C.MDB_dbi(size))
+	ret := C.lmdbgo2_mdb_env_set_maxdbs(env.ver, env._env, C.MDB_dbi(size))
 	return operrno("mdb_env_set_maxdbs", ret)
 }
 
@@ -518,5 +527,5 @@ func (env *Env) run(lock bool, flags uint, fn TxnOp) error {
 //
 // See mdb_dbi_close.
 func (env *Env) CloseDBI(db DBI) {
-	C.mdb_dbi_close(env._env, C.MDB_dbi(db))
+	C.lmdbgo2_mdb_dbi_close(env.ver, env._env, C.MDB_dbi(db))
 }

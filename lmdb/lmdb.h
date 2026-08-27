@@ -21,11 +21,7 @@
 #endif
 
 #if !defined(LMDBGO_STREAM)
-/* TEMPORARY stage-3 bridge: until the dispatch layer lands, unstreamed
- * consumers get the renamed 0.9 engine so the existing C.mdb_* call sites
- * keep resolving (to mdb09_*). Removed in the dispatch stage. */
-# include "rename_lmdb09.h"
-# include "lmdb_lmdb09.h"
+# include "lmdb_lmdb10.h"
 #elif LMDBGO_STREAM == 9
 # include "lmdb_lmdb09.h"
 #elif LMDBGO_STREAM == 10

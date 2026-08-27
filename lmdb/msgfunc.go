@@ -9,13 +9,17 @@ import (
 	"sync/atomic"
 )
 
-// lmdbgoMDBMsgFuncBridge provides a static C function for handling MDB_msgfunc
-// callbacks.  It performs string conversion and dynamic dispatch to a msgfunc
-// provided to Env.ReaderList.  Any error returned by the msgfunc is cached and
-// -1 is returned to terminate the iteration.
+// lmdbgo2MDBMsgFuncBridge provides a static C function for handling
+// MDB_msgfunc callbacks.  It performs string conversion and dynamic dispatch
+// to a msgfunc provided to Env.ReaderList.  Any error returned by the msgfunc
+// is cached and -1 is returned to terminate the iteration.
+//
+// The exported name carries the lmdbgo2 prefix because it becomes a global C
+// symbol: lmdb-go v1 exports lmdbgoMDBMsgFuncBridge, and v1 and v2 must be
+// co-importable in one binary.
 
-//export lmdbgoMDBMsgFuncBridge
-func lmdbgoMDBMsgFuncBridge(cmsg C.lmdbgo_ConstCString, _ctx C.size_t) C.int {
+//export lmdbgo2MDBMsgFuncBridge
+func lmdbgo2MDBMsgFuncBridge(cmsg C.lmdbgo_ConstCString, _ctx C.size_t) C.int {
 	ctx := msgctx(_ctx).get()
 	msg := C.GoString(cmsg.p)
 	err := ctx.fn(msg)
