@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"syscall"
 	"unsafe"
 )
 
@@ -65,13 +66,30 @@ type Env struct {
 	_env *C.MDB_env
 
 	// ver selects the LMDB engine (9 or 10) driving this environment; it is
-	// passed to every lmdbgo2_* dispatch shim and copied into every Txn and
-	// Cursor created from this Env.
+	// passed to every lmdbgo2_* dispatch shim and copied into every Txn
+	// created from this Env. It is decided in Open.
 	ver C.int
 
 	// closeLock is used to allow the Txn finalizer to check if the Env has
-	// been closed, so that it may know if it must abort.
+	// been closed, so that it may know if it must abort. It also guards the
+	// pre-open state below.
 	closeLock sync.RWMutex
+
+	// The engine environment is only created in Open, once the engine is
+	// known (existing databases are sniffed; new ones use the requested or
+	// default version). Until then, settings are buffered on the Go side and
+	// replayed onto the engine env right before mdb_env_open.
+	opened bool // Open succeeded; _env is valid and open
+	closed bool // Close was called
+	reqVer LMDBVersion
+
+	pendingFlags      uint
+	pendingMapSize    int64
+	mapSizeSet        bool
+	pendingMaxReaders int
+	maxReadersSet     bool
+	pendingMaxDBs     int
+	maxDBsSet         bool
 
 	ckey *C.MDB_val
 	cval *C.MDB_val
@@ -79,14 +97,15 @@ type Env struct {
 
 // NewEnv allocates and initializes a new Env.
 //
+// The engine environment itself is created by Open, when the LMDB version
+// driving it is decided; errors from mdb_env_create are therefore reported by
+// Open rather than NewEnv.
+//
 // See mdb_env_create.
 func NewEnv() (*Env, error) {
 	env := new(Env)
-	env.ver = 9 // engine selection lands with the sniffing stage
-	ret := C.lmdbgo2_mdb_env_create(env.ver, &env._env)
-	if ret != success {
-		return nil, operrno("mdb_env_create", ret)
-	}
+	// MDB_val is layout-identical between the engines, so these scratch
+	// buffers can be allocated before the engine is known.
 	env.ckey = (*C.MDB_val)(C.malloc(C.size_t(unsafe.Sizeof(C.MDB_val{}))))
 	env.cval = (*C.MDB_val)(C.malloc(C.size_t(unsafe.Sizeof(C.MDB_val{}))))
 
@@ -94,19 +113,116 @@ func NewEnv() (*Env, error) {
 	return env, nil
 }
 
-// Open an environment handle. If this function fails Close() must be called to
-// discard the Env handle.  Open passes flags|NoTLS to mdb_env_open.
+// Open an environment handle. Open passes flags|NoTLS to mdb_env_open.
+//
+// Open decides which bundled LMDB engine drives this environment: an existing
+// database is opened with the engine matching its on-disk format (see
+// SniffFormat); a new database uses the version requested with
+// SetLMDBVersion, or the process-wide default (V09 unless changed). If the
+// on-disk format conflicts with an explicitly requested version, Open fails
+// with ErrVersionConflict.
+//
+// If Open fails the Env remains unopened: Open may be retried (with buffered
+// settings intact) and Close remains safe.
 //
 // See mdb_env_open.
 func (env *Env) Open(path string, flags uint, mode os.FileMode) error {
+	env.closeLock.Lock()
+	defer env.closeLock.Unlock()
+	if env.closed {
+		return errClosed
+	}
+	if env.opened {
+		// Matches LMDB's EINVAL for mdb_env_open on an already-open env.
+		return &OpError{Op: "mdb_env_open", Errno: syscall.EINVAL}
+	}
+
+	ver := env.reqVer
+	sniffed, err := SniffFormat(path, flags)
+	switch {
+	case err == nil:
+	case IsErrno(err, Invalid), IsErrno(err, VersionMismatch),
+		errors.Is(err, ErrFormatUnsupported):
+		// Definitive format verdicts: opening with either engine would fail
+		// with a less precise error.
+		return err
+	default:
+		// I/O errors (e.g. permission denied) are left for the engine's own
+		// mdb_env_open to report with its usual errno.
+		sniffed = FormatUnknown
+	}
+	switch {
+	case sniffed.valid():
+		if ver.valid() && ver != sniffed {
+			return ErrVersionConflict
+		}
+		ver = sniffed
+	case ver.valid():
+		// New database: use the explicitly requested version.
+	default:
+		ver = defaultLMDBVersion()
+	}
+	if ver == V10 && !v10Available {
+		return errV10Unavailable
+	}
+
+	env.ver = C.int(ver)
+	ret := C.lmdbgo2_mdb_env_create(env.ver, &env._env)
+	if ret != success {
+		env._env = nil
+		return operrno("mdb_env_create", ret)
+	}
+
+	// Replay the buffered pre-open settings onto the fresh engine env. On
+	// any failure the engine env is discarded again so Open can be retried.
+	fail := func(op string, ret C.int) error {
+		C.lmdbgo2_mdb_env_close(env.ver, env._env)
+		env._env = nil
+		return operrno(op, ret)
+	}
+	if env.maxReadersSet {
+		ret = C.lmdbgo2_mdb_env_set_maxreaders(env.ver, env._env, C.uint(env.pendingMaxReaders))
+		if ret != success {
+			return fail("mdb_env_set_maxreaders", ret)
+		}
+	}
+	if env.maxDBsSet {
+		ret = C.lmdbgo2_mdb_env_set_maxdbs(env.ver, env._env, C.MDB_dbi(env.pendingMaxDBs))
+		if ret != success {
+			return fail("mdb_env_set_maxdbs", ret)
+		}
+	}
+	if env.mapSizeSet {
+		ret = C.lmdbgo2_mdb_env_set_mapsize(env.ver, env._env, C.size_t(env.pendingMapSize))
+		if ret != success {
+			return fail("mdb_env_set_mapsize", ret)
+		}
+	}
+	if env.pendingFlags != 0 {
+		ret = C.lmdbgo2_mdb_env_set_flags(env.ver, env._env, C.uint(env.pendingFlags), C.int(1))
+		if ret != success {
+			return fail("mdb_env_set_flags", ret)
+		}
+	}
+
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	ret := C.lmdbgo2_mdb_env_open(env.ver, env._env, cpath, C.uint(NoTLS|flags), C.mdb_mode_t(mode))
-	return operrno("mdb_env_open", ret)
+	ret = C.lmdbgo2_mdb_env_open(env.ver, env._env, cpath, C.uint(NoTLS|flags), C.mdb_mode_t(mode))
+	if ret != success {
+		return fail("mdb_env_open", ret)
+	}
+	env.opened = true
+	return nil
 }
 
-var errNotOpen = errors.New("enivornment is not open")
+var errNotOpen = errors.New("environment is not open")
 var errNegSize = errors.New("negative size")
+var errClosed = errors.New("environment is already closed")
+
+// changeableFlags are the flags accepted by mdb_env_set_flags after open
+// (CHANGEABLE in mdb.c, identical in both engines). Pre-open SetFlags calls
+// validate against the same set so the EINVAL behavior matches v1.
+const changeableFlags uint = NoSync | NoMetaSync | MapAsync | NoMemInit
 
 // FD returns the open file descriptor (or Windows file handle) for the given
 // environment.  An error is returned if the environment has not been
@@ -118,6 +234,12 @@ func (env *Env) FD() (uintptr, error) {
 	// case that env has not been opened yet.  the strange construction is done
 	// to avoid constant value overflow errors at compile time.
 	const fdInvalid = ^uintptr(0)
+
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		return 0, errNotOpen
+	}
 
 	var mf C.mdb_filehandle_t
 	ret := C.lmdbgo2_mdb_env_get_fd(env.ver, env._env, &mf)
@@ -139,6 +261,21 @@ func (env *Env) FD() (uintptr, error) {
 //
 // See mdb_reader_list.
 func (env *Env) ReaderList(fn func(string) error) error {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		// Emulate mdb_reader_list without calling C: a NULL msg func or a
+		// zero-value Env yields EINVAL (as in the engines / v1), and an
+		// initialized but unopened env prints this fixed message.
+		if env.closed {
+			return errClosed
+		}
+		if fn == nil || env.ckey == nil {
+			return &OpError{Op: "mdb_reader_list", Errno: syscall.EINVAL}
+		}
+		return fn("(no reader locks)\n")
+	}
+
 	ctx, done := newMsgFunc(fn)
 	defer done()
 	if fn == nil {
@@ -163,19 +300,36 @@ func (env *Env) ReaderList(fn func(string) error) error {
 //
 // See mdb_reader_check()
 func (env *Env) ReaderCheck() (int, error) {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		// mdb_reader_check on an unopened env reports 0 cleared entries; a
+		// zero-value Env yields EINVAL as in the engines / v1.
+		if env.closed {
+			return 0, errClosed
+		}
+		if env.ckey == nil {
+			return 0, &OpError{Op: "mdb_reader_check", Errno: syscall.EINVAL}
+		}
+		return 0, nil
+	}
 	var _dead C.int
 	ret := C.lmdbgo2_mdb_reader_check(env.ver, env._env, &_dead)
 	return int(_dead), operrno("mdb_reader_check", ret)
 }
 
 func (env *Env) close() bool {
-	if env._env == nil {
+	env.closeLock.Lock()
+	if env.closed {
+		env.closeLock.Unlock()
 		return false
 	}
-
-	env.closeLock.Lock()
-	C.lmdbgo2_mdb_env_close(env.ver, env._env)
-	env._env = nil
+	if env._env != nil {
+		C.lmdbgo2_mdb_env_close(env.ver, env._env)
+		env._env = nil
+	}
+	env.opened = false
+	env.closed = true
 	env.closeLock.Unlock()
 
 	C.free(unsafe.Pointer(env.ckey))
@@ -200,7 +354,26 @@ func (env *Env) Close() error {
 // CopyFD copies env to the the file descriptor fd.
 //
 // See mdb_env_copyfd.
+// requireOpen guards methods that need an open engine env: v1 passed the
+// handle straight into C, where an unopened env crashed (mdb_env_stat) or
+// returned unhelpful errnos. Callers must hold closeLock (read) while using
+// the handle.
+func (env *Env) requireOpen() error {
+	if !env.opened {
+		if env.closed {
+			return errClosed
+		}
+		return errNotOpen
+	}
+	return nil
+}
+
 func (env *Env) CopyFD(fd uintptr) error {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return err
+	}
 	ret := C.lmdbgo2_mdb_env_copyfd(env.ver, env._env, C.mdb_filehandle_t(fd))
 	return operrno("mdb_env_copyfd", ret)
 }
@@ -209,6 +382,11 @@ func (env *Env) CopyFD(fd uintptr) error {
 //
 // See mdb_env_copyfd2.
 func (env *Env) CopyFDFlag(fd uintptr, flags uint) error {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return err
+	}
 	ret := C.lmdbgo2_mdb_env_copyfd2(env.ver, env._env, C.mdb_filehandle_t(fd), C.uint(flags))
 	return operrno("mdb_env_copyfd2", ret)
 }
@@ -217,6 +395,11 @@ func (env *Env) CopyFDFlag(fd uintptr, flags uint) error {
 //
 // See mdb_env_copy.
 func (env *Env) Copy(path string) error {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return err
+	}
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	ret := C.lmdbgo2_mdb_env_copy(env.ver, env._env, cpath)
@@ -227,6 +410,11 @@ func (env *Env) Copy(path string) error {
 //
 // See mdb_env_copy2.
 func (env *Env) CopyFlag(path string, flags uint) error {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return err
+	}
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	ret := C.lmdbgo2_mdb_env_copy2(env.ver, env._env, cpath, C.uint(flags))
@@ -249,6 +437,13 @@ type Stat struct {
 //
 // See mdb_env_stat.
 func (env *Env) Stat() (*Stat, error) {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		// v1 crashed here on an unopened env (mdb_env_stat dereferences
+		// internal state); v2 returns a clean error instead.
+		return nil, err
+	}
 	var _stat C.MDB_stat
 	ret := C.lmdbgo2_mdb_env_stat(env.ver, env._env, &_stat)
 	if ret != success {
@@ -278,6 +473,11 @@ type EnvInfo struct {
 //
 // See mdb_env_info.
 func (env *Env) Info() (*EnvInfo, error) {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return nil, err
+	}
 	var _info C.MDB_envinfo
 	ret := C.lmdbgo2_mdb_env_info(env.ver, env._env, &_info)
 	if ret != success {
@@ -298,6 +498,11 @@ func (env *Env) Info() (*EnvInfo, error) {
 //
 // See mdb_env_sync.
 func (env *Env) Sync(force bool) error {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return err
+	}
 	ret := C.lmdbgo2_mdb_env_sync(env.ver, env._env, cbool(force))
 	return operrno("mdb_env_sync", ret)
 }
@@ -306,6 +511,20 @@ func (env *Env) Sync(force bool) error {
 //
 // See mdb_env_set_flags.
 func (env *Env) SetFlags(flags uint) error {
+	env.closeLock.Lock()
+	defer env.closeLock.Unlock()
+	if !env.opened {
+		if env.closed {
+			return errClosed
+		}
+		// Buffered until Open; validated against the same CHANGEABLE set as
+		// the engines so the EINVAL timing matches v1.
+		if flags&^changeableFlags != 0 {
+			return &OpError{Op: "mdb_env_set_flags", Errno: syscall.EINVAL}
+		}
+		env.pendingFlags |= flags
+		return nil
+	}
 	ret := C.lmdbgo2_mdb_env_set_flags(env.ver, env._env, C.uint(flags), C.int(1))
 	return operrno("mdb_env_set_flags", ret)
 }
@@ -314,6 +533,18 @@ func (env *Env) SetFlags(flags uint) error {
 //
 // See mdb_env_set_flags.
 func (env *Env) UnsetFlags(flags uint) error {
+	env.closeLock.Lock()
+	defer env.closeLock.Unlock()
+	if !env.opened {
+		if env.closed {
+			return errClosed
+		}
+		if flags&^changeableFlags != 0 {
+			return &OpError{Op: "mdb_env_set_flags", Errno: syscall.EINVAL}
+		}
+		env.pendingFlags &^= flags
+		return nil
+	}
 	ret := C.lmdbgo2_mdb_env_set_flags(env.ver, env._env, C.uint(flags), C.int(0))
 	return operrno("mdb_env_set_flags", ret)
 }
@@ -322,6 +553,16 @@ func (env *Env) UnsetFlags(flags uint) error {
 //
 // See mdb_env_get_flags.
 func (env *Env) Flags() (uint, error) {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		// Pre-open Flags() must keep working (exp/lmdbsync reads flags
+		// before Open); it reports the buffered flags.
+		if env.closed {
+			return 0, errClosed
+		}
+		return env.pendingFlags, nil
+	}
 	var _flags C.uint
 	ret := C.lmdbgo2_mdb_env_get_flags(env.ver, env._env, &_flags)
 	if ret != success {
@@ -335,6 +576,11 @@ func (env *Env) Flags() (uint, error) {
 //
 // See mdb_env_get_path.
 func (env *Env) Path() (string, error) {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if err := env.requireOpen(); err != nil {
+		return "", err
+	}
 	var cpath *C.char
 	ret := C.lmdbgo2_mdb_env_get_path(env.ver, env._env, &cpath)
 	if ret != success {
@@ -353,6 +599,18 @@ func (env *Env) SetMapSize(size int64) error {
 	if size < 0 {
 		return errNegSize
 	}
+	env.closeLock.Lock()
+	defer env.closeLock.Unlock()
+	if !env.opened {
+		if env.closed {
+			return errClosed
+		}
+		env.pendingMapSize = size
+		env.mapSizeSet = true
+		return nil
+	}
+	// Post-open resizing must keep calling into the engine directly
+	// (exp/lmdbsync depends on it).
 	ret := C.lmdbgo2_mdb_env_set_mapsize(env.ver, env._env, C.size_t(size))
 	return operrno("mdb_env_set_mapsize", ret)
 }
@@ -364,6 +622,17 @@ func (env *Env) SetMaxReaders(size int) error {
 	if size < 0 {
 		return errNegSize
 	}
+	env.closeLock.Lock()
+	defer env.closeLock.Unlock()
+	if !env.opened {
+		if env.closed {
+			return errClosed
+		}
+		env.pendingMaxReaders = size
+		env.maxReadersSet = true
+		return nil
+	}
+	// Post-open the engines reject this with EINVAL, as in v1.
 	ret := C.lmdbgo2_mdb_env_set_maxreaders(env.ver, env._env, C.uint(size))
 	return operrno("mdb_env_set_maxreaders", ret)
 }
@@ -372,6 +641,21 @@ func (env *Env) SetMaxReaders(size int) error {
 //
 // See mdb_env_get_maxreaders.
 func (env *Env) MaxReaders() (int, error) {
+	// defaultMaxReaders is DEFAULT_READERS in mdb.c, identical in both
+	// engines: what an unopened env reports when nothing was buffered.
+	const defaultMaxReaders = 126
+
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		if env.closed {
+			return 0, errClosed
+		}
+		if env.maxReadersSet {
+			return env.pendingMaxReaders, nil
+		}
+		return defaultMaxReaders, nil
+	}
 	var max C.uint
 	ret := C.lmdbgo2_mdb_env_get_maxreaders(env.ver, env._env, &max)
 	return int(max), operrno("mdb_env_get_maxreaders", ret)
@@ -397,6 +681,17 @@ func (env *Env) SetMaxDBs(size int) error {
 	if size < 0 {
 		return errNegSize
 	}
+	env.closeLock.Lock()
+	defer env.closeLock.Unlock()
+	if !env.opened {
+		if env.closed {
+			return errClosed
+		}
+		env.pendingMaxDBs = size
+		env.maxDBsSet = true
+		return nil
+	}
+	// Post-open the engines reject this with EINVAL, as in v1.
 	ret := C.lmdbgo2_mdb_env_set_maxdbs(env.ver, env._env, C.MDB_dbi(size))
 	return operrno("mdb_env_set_maxdbs", ret)
 }
@@ -527,5 +822,11 @@ func (env *Env) run(lock bool, flags uint, fn TxnOp) error {
 //
 // See mdb_dbi_close.
 func (env *Env) CloseDBI(db DBI) {
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		// No DBI can exist on an unopened env; v1 crashed here.
+		return
+	}
 	C.lmdbgo2_mdb_dbi_close(env.ver, env._env, C.MDB_dbi(db))
 }

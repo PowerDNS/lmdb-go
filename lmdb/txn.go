@@ -78,6 +78,11 @@ type Txn struct {
 // beginTxn does not lock the OS thread which is a prerequisite for creating a
 // write transaction.
 func beginTxn(env *Env, parent *Txn, flags uint) (*Txn, error) {
+	if env._env == nil {
+		// The engine env only exists after a successful Open; a nil handle
+		// must never reach C (v1 crashed here).
+		return nil, errNotOpen
+	}
 	txn := &Txn{
 		readonly: (flags&Readonly != 0),
 		env:      env,
@@ -140,6 +145,11 @@ func (txn *Txn) ID() uintptr {
 }
 
 func (txn *Txn) getID() uintptr {
+	if txn._txn == nil {
+		// A terminated txn has no engine handle; do not rely on the C
+		// library tolerating NULL here.
+		return 0
+	}
 	return uintptr(C.lmdbgo2_mdb_txn_id(txn.ver, txn._txn))
 }
 
