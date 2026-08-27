@@ -8,6 +8,22 @@ reference.
 	http://www.lmdb.tech/doc/starting.html
 	http://www.lmdb.tech/doc/modules.html
 
+# LMDB versions
+
+Two LMDB engines are bundled in every build: the 0.9.x series and the 1.0.x
+series, whose on-disk formats are mutually incompatible. Each Env is driven by
+exactly one engine, decided at Open: an existing database is always opened
+with the engine matching its on-disk format (detected safely, see
+SniffFormat), while a new database uses the version requested with
+Env.SetLMDBVersion or the process-wide default (V09 unless changed with
+SetDefaultLMDBVersion or the LMDBGO_DEFAULT_VERSION environment variable).
+Databases of both formats can be open simultaneously in one process. lmdb-go
+never converts a database between formats; migrating means dumping with an
+environment of one version and loading into another.
+
+On Windows only the 0.9 engine is available, because upstream LMDB 1.0 is
+currently broken there.
+
 # Environment
 
 An LMDB environment holds named databases (key-value stores).  An environment

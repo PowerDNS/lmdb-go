@@ -1,6 +1,40 @@
-# lmdb-go [![releases/v1.9.2](https://img.shields.io/badge/release-v1.9.2-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.31](https://img.shields.io/badge/C-v0.9.31-555555.svg)](https://github.com/LMDB/lmdb/blob/mdb.RE/0.9/libraries/liblmdb/CHANGES) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
+# lmdb-go [![releases](https://img.shields.io/badge/release-v2-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.35+v1.0.0](https://img.shields.io/badge/C-v0.9.35%20%2B%20v1.0.0-555555.svg)](https://git.openldap.org/openldap/openldap/-/tags?search=LMDB_) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
 
 Go bindings to the OpenLDAP Lightning Memory-Mapped Database (LMDB).
+
+## LMDB versions: what is new in v2
+
+LMDB 1.0 (released June 2026) uses an on-disk format that is mutually
+incompatible with the 0.9.x series, while keeping the same C API and symbol
+names — so a program can normally link only one of them. lmdb-go v2 bundles
+**both** engines (currently 0.9.35 and 1.0.0), compiled behind generated
+symbol-rename headers, and selects the engine **per environment** at runtime:
+
+- **Existing databases** are always opened with the engine matching their
+  on-disk format. The format is detected by reading the data file's meta page
+  (`SniffFormat`), never by trying an open — a failed LMDB 1.0 open of a 0.9
+  file can rewrite the lock file first.
+- **New databases** default to the **0.9 format** for interoperability while
+  other tools still ship LMDB 0.9. Opt into 1.0 per environment with
+  `Env.SetLMDBVersion(lmdb.V10)` before `Open`, process-wide with
+  `lmdb.SetDefaultLMDBVersion`, or via the `LMDBGO_DEFAULT_VERSION=10`
+  environment variable.
+- Both formats can be **open simultaneously in one process** (e.g. for a
+  dump-and-reload migration; lmdb-go never converts formats in place).
+- `Env.LMDBVersion` and `Env.EngineVersion` report the engine driving an
+  environment. The package-level `Version` reports the canonical (newest
+  bundled) LMDB identity.
+- **v1 and v2 can be imported by the same binary** (all v2 C symbols are
+  namespaced), which also means migrating is only an import-path change:
+  `github.com/PowerDNS/lmdb-go/...` → `github.com/PowerDNS/lmdb-go/v2/...`.
+- On **Windows** only the 0.9 engine is available (upstream LMDB 1.0 is
+  currently broken there). The `system_lmdb` dynamic-linking build tag from
+  v1 has been dropped.
+- The vendored trees can carry local patches (see `lmdb/patches/`); v2 ships
+  a fix for LMDB 1.0.0's use-after-free when closing a read-only cursor
+  after its transaction has ended.
+
+See `CHANGES.md` for the complete list of v1 → v2 behavior differences.
 
 ## About this fork
 
@@ -34,29 +68,29 @@ and pinned by tag/commit.
 
 Developers concerned with package stability should consult the documentation.
 
-#### lmdb [![GoDoc](https://godoc.org/github.com/PowerDNS/lmdb-go/lmdb?status.svg)](https://godoc.org/github.com/PowerDNS/lmdb-go/lmdb) [![stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](#user-content-versioning-and-stability)
+#### lmdb [![GoDoc](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/lmdb?status.svg)](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/lmdb) [![stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](#user-content-versioning-and-stability)
 
 ```go
-import "github.com/PowerDNS/lmdb-go/lmdb"
+import "github.com/PowerDNS/lmdb-go/v2/lmdb"
 ```
 
 Core bindings allowing low-level access to LMDB.
 
-#### lmdbscan [![GoDoc](https://godoc.org/github.com/PowerDNS/lmdb-go/lmdbscan?status.svg)](https://godoc.org/github.com/PowerDNS/lmdb-go/lmdbscan) [![stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](#user-content-versioning-and-stability)
+#### lmdbscan [![GoDoc](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/lmdbscan?status.svg)](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/lmdbscan) [![stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](#user-content-versioning-and-stability)
 
 ```go
-import "github.com/PowerDNS/lmdb-go/lmdbscan"
+import "github.com/PowerDNS/lmdb-go/v2/lmdbscan"
 ```
 
 A utility package for scanning database ranges. The API is inspired by
 [bufio.Scanner](https://godoc.org/bufio#Scanner) and the python cursor
 [implementation](https://lmdb.readthedocs.org/en/release/#cursor-class).
 
-#### exp/lmdbsync [![GoDoc](https://godoc.org/github.com/PowerDNS/lmdb-go/exp/lmdbsync?status.svg)](https://godoc.org/github.com/PowerDNS/lmdb-go/exp/lmdbsync) [![experimental](https://img.shields.io/badge/stability-experimental-red.svg)](#user-content-versioning-and-stability)
+#### exp/lmdbsync [![GoDoc](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/exp/lmdbsync?status.svg)](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/exp/lmdbsync) [![experimental](https://img.shields.io/badge/stability-experimental-red.svg)](#user-content-versioning-and-stability)
 
 
 ```go
-import "github.com/PowerDNS/lmdb-go/exp/lmdbsync"
+import "github.com/PowerDNS/lmdb-go/v2/exp/lmdbsync"
 ```
 
 An experimental utility package that provides synchronization necessary to
@@ -82,14 +116,14 @@ database interactions without compromising the flexibility of the C API.
 possible there are compromises, gotchas, and caveats that application
 developers must be aware of when relying on LMDB to store their data.  All
 users are encouraged to fully read the
-[documentation](https://godoc.org/github.com/PowerDNS/lmdb-go/lmdb) so they are
+[documentation](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/lmdb) so they are
 aware of these caveats.
 
 Where the lmdb package and its implementation decisions do not meet the needs
 of application developers in terms of safety or operational use the lmdbsync
 package has been designed to wrap lmdb and safely fill in additional
 functionality.  Consult the
-[documentation](https://godoc.org/github.com/PowerDNS/lmdb-go/exp/lmdbsync) for
+[documentation](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/exp/lmdbsync) for
 more information about the lmdbsync package.
 
 ### API coverage
@@ -156,7 +190,7 @@ questions of why to use one database or the other.
 - Its simpler design and implementation in pure Go mean it is free of many
   caveats and gotchas which are present using the lmdb package.  For more
   information about caveats with the lmdb package, consult its
-  [documentation](https://godoc.org/github.com/PowerDNS/lmdb-go/lmdb).
+  [documentation](https://godoc.org/github.com/PowerDNS/lmdb-go/v2/lmdb).
 
 ### Advantages of LMDB
 
@@ -188,7 +222,7 @@ questions of why to use one database or the other.
 There is no dependency on shared libraries.  So most users can simply install
 using `go get`.
 
-`go get github.com/PowerDNS/lmdb-go/lmdb`
+`go get github.com/PowerDNS/lmdb-go/v2/lmdb`
 
 On FreeBSD 10, you must explicitly set `CC` (otherwise it will fail with a
 cryptic error), for example:
