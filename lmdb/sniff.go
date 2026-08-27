@@ -18,14 +18,18 @@ import (
 const sniffMagic = 0xBEEFC0DE
 
 // ErrFormatUnsupported is returned when a database file carries a valid LMDB
-// magic but data format version 2, written only by lmdb-js prerelease
-// snapshots and incompatible with both bundled engines.
+// magic but data format version 2, which belongs to neither bundled engine.
+// It is written by lmdb-js, whose vendored LMDB prerelease snapshot defines
+// MDB_DATA_VERSION 2 (verified against kriszyp/lmdb-js
+// dependencies/lmdb/libraries/liblmdb/mdb.c).
 var ErrFormatUnsupported = errors.New("lmdb: unsupported database format (written by an lmdb-js prerelease)")
 
 // SniffFormat detects which LMDB version matches the on-disk format of the
 // database at path, without opening the environment. Opening with the wrong
-// engine to find out is not safe: a failed LMDB 1.0 open can rewrite the lock
-// file before it notices the data-format mismatch.
+// engine to find out is not safe: both engines set up (and may rewrite) the
+// lock file before reading the data file's header — mdb_env_open calls
+// mdb_env_setup_locks before mdb_env_open2/mdb_env_read_header — so a failed
+// probe can race a concurrent correct-version open.
 //
 // Of flags, only NoSubdir is honored (path is the data file itself rather
 // than a directory containing data.mdb).

@@ -665,11 +665,12 @@ func (env *Env) MaxReaders() (int, error) {
 //
 // See mdb_env_get_maxkeysize.
 func (env *Env) MaxKeySize() int {
-	// defaultMaxKeySize is both engines' default (0.9's compile-time
-	// MDB_MAXKEYSIZE; 1.0's value for the default page size). Returned
-	// without calling C when there is no open engine env: LMDB 1.0's
-	// mdb_env_get_maxkeysize dereferences its argument, so nil must never
-	// reach C here.
+	// defaultMaxKeySize is LMDB 0.9's compile-time MDB_MAXKEYSIZE, returned
+	// without calling C when there is no open engine env — matching what v1
+	// returned in that case. It is NOT the 1.0 engine's value: LMDB 1.0
+	// derives the limit from the page size (ENV_MAXKEY dereferences the
+	// env, so nil must never reach C here) and reports 8122 for 4K pages;
+	// query an opened Env for the real limit.
 	const defaultMaxKeySize = 511
 
 	if env == nil {
