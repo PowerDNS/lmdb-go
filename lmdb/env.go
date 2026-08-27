@@ -665,11 +665,20 @@ func (env *Env) MaxReaders() (int, error) {
 //
 // See mdb_env_get_maxkeysize.
 func (env *Env) MaxKeySize() int {
+	// defaultMaxKeySize is both engines' default (0.9's compile-time
+	// MDB_MAXKEYSIZE; 1.0's value for the default page size). Returned
+	// without calling C when there is no open engine env: LMDB 1.0's
+	// mdb_env_get_maxkeysize dereferences its argument, so nil must never
+	// reach C here.
+	const defaultMaxKeySize = 511
+
 	if env == nil {
-		// Both engines default to 511. This cannot dispatch without an env,
-		// and LMDB 1.0's mdb_env_get_maxkeysize dereferences its argument,
-		// so nil must never reach C here.
-		return 511
+		return defaultMaxKeySize
+	}
+	env.closeLock.RLock()
+	defer env.closeLock.RUnlock()
+	if !env.opened {
+		return defaultMaxKeySize
 	}
 	return int(C.lmdbgo2_mdb_env_get_maxkeysize(env.ver, env._env))
 }

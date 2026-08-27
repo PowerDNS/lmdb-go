@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - master
+      - v2-dual-lmdb-versions
   pull_request:
     branches:
       - master
@@ -21,7 +22,7 @@ jobs:
           - '1.22'
           - '1.23'
           - '1.x'
-        
+
     name: Go ${{ matrix.go }} tests
     steps:
     - uses: actions/checkout@v3
@@ -33,6 +34,47 @@ jobs:
       run: go install golang.org/x/lint/golint@latest
     - name: Install goimports
       run: go install golang.org/x/tools/cmd/goimports@latest
+    # `make all` runs the full suite against BOTH bundled LMDB engines
+    # (0.9 default and LMDBGO_DEFAULT_VERSION=10), the C-level checks
+    # (shared-define parity, ASan cursor-close reproducer), and -race.
     - name: Build and test
       run: make all
+    - name: Symbol hygiene
+      run: |
+        go test -c -o /tmp/lmdb.test ./lmdb
+        # No unprefixed mdb_* global may be defined: both engines are
+        # renamed (mdb09_*/mdb10_*) so v2 can coexist with lmdb-go v1.
+        if nm /tmp/lmdb.test | grep -E ' [TDSBC] _?mdb' | grep -vE 'mdb(09|10)_'; then
+          echo "ERROR: unprefixed mdb symbols found"; exit 1
+        fi
 
+  coexist:
+    runs-on: ubuntu-22.04
+    name: v1+v2 coexistence
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.x'
+    # Links lmdb-go v1 (unprefixed LMDB 0.9 + lmdbgo_* helpers) and v2
+    # into one test binary and cross-reads database files between them.
+    - name: Coexistence test
+      run: make coexist-test
+
+  windows-build:
+    runs-on: ubuntu-22.04
+    name: Windows cross-build (0.9 engine only)
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.x'
+    - name: Install mingw
+      run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+    # LMDB 1.0 is broken on Windows upstream; the 1.0 tree carries
+    # //go:build !windows and the dispatch layer collapses to the 0.9
+    # engine. This build proves that the tagging keeps Windows compiling.
+    - name: Cross-build for windows/amd64
+      run: CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build ./...
