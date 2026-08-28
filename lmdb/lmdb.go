@@ -154,27 +154,35 @@ import "C"
 // Version return the major, minor, and patch version numbers of the LMDB C
 // library and a string representation of the version.
 //
-// Two LMDB engines are bundled in this package; Version reports the canonical
-// surface (the newest bundled engine), so code gating LMDB 1.0 workarounds on
-// major >= 1 stays safe. The engine actually driving a particular environment
-// is reported per Env.
+// Two LMDB engines are bundled in this package, so there is no single "the
+// LMDB version". The numbers reported here are those of the newest bundled
+// engine, matching the canonical header surface the bindings are compiled
+// against (constants, error strings); the string names both bundled engines.
+// On Windows only the 0.9 engine exists and is reported alone. Use
+// Env.EngineVersion for the engine driving a specific environment.
 //
 // See mdb_version.
 func Version() (major, minor, patch int, s string) {
 	var maj, min, pat C.int
-	verstr := C.lmdbgo2_mdb_version(10, &maj, &min, &pat)
-	return int(maj), int(min), int(pat), C.GoString(verstr)
+	verstr := C.GoString(C.lmdbgo2_mdb_version(10, &maj, &min, &pat))
+	if v10Available {
+		// Name both engines, so that logs and version output make the
+		// dual-engine nature visible and either version can be grepped.
+		var m9, n9, p9 C.int
+		verstr += " + " + C.GoString(C.lmdbgo2_mdb_version(9, &m9, &n9, &p9))
+	}
+	return int(maj), int(min), int(pat), verstr
 }
 
-// VersionString returns a string representation of the LMDB C library version.
+// VersionString returns a string representation of the LMDB C library
+// version, naming both bundled engines.
 //
 // See Version for how the two bundled engines are reported.
 //
 // See mdb_version.
 func VersionString() string {
-	var maj, min, pat C.int
-	verstr := C.lmdbgo2_mdb_version(10, &maj, &min, &pat)
-	return C.GoString(verstr)
+	_, _, _, s := Version()
+	return s
 }
 
 func cbool(b bool) C.int {

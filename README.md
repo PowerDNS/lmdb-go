@@ -22,14 +22,15 @@ symbol-rename headers, and selects the engine **per environment** at runtime:
 - Both formats can be **open simultaneously in one process** (e.g. for a
   dump-and-reload migration; lmdb-go never converts formats in place).
 - `Env.LMDBVersion` and `Env.EngineVersion` report the engine driving an
-  environment. The package-level `Version` reports the canonical (newest
-  bundled) LMDB identity.
+  environment. The package-level `Version` reports the newest bundled
+  engine, with a release string naming both.
 - **v1 and v2 can be imported by the same binary** (all v2 C symbols are
   namespaced), which also means migrating is only an import-path change:
   `github.com/PowerDNS/lmdb-go/...` → `github.com/PowerDNS/lmdb-go/v2/...`.
 - On **Windows** only the 0.9 engine is available (upstream LMDB 1.0 is
-  currently broken there). The `system_lmdb` dynamic-linking build tag from
-  v1 has been dropped.
+  currently broken there). As in v1, the bundled LMDB sources are always
+  statically linked; dynamic linking against a system liblmdb is not
+  supported.
 - The vendored trees can carry local patches (see `lmdb/patches/`); v2 ships
   a fix for LMDB 1.0.0's use-after-free when closing a read-only cursor
   after its transaction has ended.
