@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-tmp="$(mktemp -d -t lmdbgo-asan)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/lmdbgo-asan.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 cat > "$tmp/repro.c" <<'EOF'

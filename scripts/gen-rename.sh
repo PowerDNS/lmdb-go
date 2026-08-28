@@ -41,7 +41,7 @@ done
 get_define() { grep "^#define $1" "$hdr_lmdb" | head -1 | awk '{print $3}'; }
 version="$(get_define MDB_VERSION_MAJOR).$(get_define MDB_VERSION_MINOR).$(get_define MDB_VERSION_PATCH)"
 
-tmp="$(mktemp -d -t lmdbgo-rename)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/lmdbgo-rename.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 # Reconstruct the pristine upstream sources: drop only the mechanically

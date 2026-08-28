@@ -52,7 +52,7 @@ cur_version="(none)"
 echo "Current LMDB version in stream $stream: $cur_version"
 echo
 
-tmp_dir="$(mktemp -d -t lmdb-update)"
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/lmdb-update.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 echo "Temp dir: $tmp_dir"
 

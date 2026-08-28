@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-tmp="$(mktemp -d -t lmdbgo-defines)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/lmdbgo-defines.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 for s in 09 10; do
