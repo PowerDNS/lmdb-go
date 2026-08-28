@@ -58,10 +58,11 @@ const (
 // database.
 //
 // See MDB_cursor.
-// The engine selector is read via c.txn.ver rather than stored on the Cursor:
-// it keeps the struct at 16 bytes (one alloc size class smaller) and cannot go
-// stale when Renew rebinds the cursor to another transaction.
 type Cursor struct {
+	// The engine selector is read via c.txn.ver rather than stored on the
+	// Cursor: it keeps the struct at 16 bytes (one alloc size class
+	// smaller) and cannot go stale when Renew rebinds the cursor to
+	// another transaction.
 	txn *Txn
 	_c  *C.MDB_cursor
 }

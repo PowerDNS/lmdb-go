@@ -17,13 +17,13 @@ import (
 // Both engines are always linked into the binary. Each Env is driven by
 // exactly one engine, selected when Open is called: an existing database is
 // always opened with the engine matching its on-disk format (detected by
-// SniffFormat), while a new database uses the explicitly requested version
+// SniffFormat), while a new database uses the explicitly requested format
 // (Env.SetFormat) or the process default (SetDefaultFormat,
 // DefaultFormatEnvVar, or V09).
 type Format int
 
 const (
-	// FormatUnknown means no LMDB version has been determined (yet).
+	// FormatUnknown means no LMDB format has been determined (yet).
 	FormatUnknown Format = 0
 	// V09 selects the bundled LMDB 0.9.x engine (on-disk data format 1).
 	V09 Format = 9
@@ -47,28 +47,28 @@ func (v Format) String() string {
 }
 
 // DefaultFormatEnvVar is the environment variable consulted for the
-// process-wide default LMDB version when SetDefaultFormat has not been
+// process-wide default format when SetDefaultFormat has not been
 // called. Accepted values: "09", "9", "0.9", "10", "1.0".
 const DefaultFormatEnvVar = "LMDBGO_DEFAULT_FORMAT"
 
-// ErrInvalidFormat is returned when an Format value is not V09 or V10.
-var ErrInvalidFormat = errors.New("lmdb: invalid LMDB version")
+// ErrInvalidFormat is returned when a Format value is not V09 or V10.
+var ErrInvalidFormat = errors.New("lmdb: invalid LMDB format")
 
 // ErrVersionUndetermined is returned by Env.EngineVersion before the engine
 // driving the environment is known (no explicit request and not yet opened).
 var ErrVersionUndetermined = errors.New("lmdb: LMDB version not determined yet")
 
 // ErrFormatConflict is returned by Env.Open when the on-disk format of an
-// existing database differs from the version explicitly requested with
+// existing database differs from the format explicitly requested with
 // Env.SetFormat. lmdb-go never converts between formats; migrating
 // requires a dump and reload (which can be done in a single process by
-// opening a source and a destination Env of different versions).
-var ErrFormatConflict = errors.New("lmdb: existing database format does not match the explicitly requested LMDB version")
+// opening a source and a destination Env of different formats).
+var ErrFormatConflict = errors.New("lmdb: existing database format does not match the explicitly requested format")
 
 var defaultVersion atomic.Int32
 
-// SetDefaultFormat sets the process-wide default LMDB version used when
-// Env.Open creates a new database and no version was requested on the Env.
+// SetDefaultFormat sets the process-wide default format used when Env.Open
+// creates a new database and no format was requested on the Env.
 // Passing FormatUnknown reverts to the built-in behavior (the
 // DefaultFormatEnvVar environment variable, or V09).
 //
@@ -88,7 +88,7 @@ func SetDefaultFormat(v Format) error {
 	return nil
 }
 
-// defaultFormat resolves the default version for new databases:
+// defaultFormat resolves the default format for new databases:
 // SetDefaultFormat wins over DefaultFormatEnvVar, which wins over V09.
 func defaultFormat() Format {
 	if v := Format(defaultVersion.Load()); v.valid() {
@@ -116,12 +116,12 @@ type EnvVersion struct {
 // String returns the upstream release string.
 func (v EnvVersion) String() string { return v.Release }
 
-// SetFormat requests the LMDB version used if Open creates a NEW
+// SetFormat requests the on-disk format used if Open creates a NEW
 // database. It must be called before Open.
 //
 // The request only applies to database creation: an existing database is
 // always opened with the engine matching its on-disk format, and if that
-// format differs from an explicitly requested version, Open fails with
+// format differs from an explicitly requested format, Open fails with
 // ErrFormatConflict rather than converting anything.
 //
 // Passing FormatUnknown clears the request.
@@ -145,8 +145,9 @@ func (env *Env) SetFormat(v Format) error {
 	return nil
 }
 
-// Format returns the LMDB version driving this environment. Before Open
-// it returns the version requested with SetFormat, or FormatUnknown.
+// Format returns the on-disk format, and thus the LMDB engine, driving this
+// environment. Before Open it returns the format requested with SetFormat,
+// or FormatUnknown.
 func (env *Env) Format() Format {
 	env.closeLock.RLock()
 	defer env.closeLock.RUnlock()
@@ -160,8 +161,8 @@ func (env *Env) Format() Format {
 // environment. Before Open it reports the explicitly requested engine, if
 // any; otherwise it returns ErrVersionUndetermined.
 //
-// The package-level Version and VersionString report the canonical (newest
-// bundled) LMDB identity instead; EngineVersion is the per-environment truth.
+// The package-level Version and VersionString report the newest bundled
+// engine instead; EngineVersion is the per-environment truth.
 func (env *Env) EngineVersion() (EnvVersion, error) {
 	v := env.Format()
 	if !v.valid() {

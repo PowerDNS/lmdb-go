@@ -151,7 +151,7 @@ package lmdb
 */
 import "C"
 
-// Version return the major, minor, and patch version numbers of the LMDB C
+// Version returns the major, minor, and patch version numbers of the LMDB C
 // library and a string representation of the version.
 //
 // Two LMDB engines are bundled in this package, so there is no single "the

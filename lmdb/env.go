@@ -89,7 +89,7 @@ type Env struct {
 
 	// The engine environment is only created in Open, once the engine is
 	// known (existing databases are sniffed; new ones use the requested or
-	// default version). Until then, settings are buffered on the Go side and
+	// default format). Until then, settings are buffered on the Go side and
 	// replayed onto the engine env right before mdb_env_open.
 	opened bool // Open succeeded; _env is valid and open
 	closed bool // Close was called
@@ -109,7 +109,7 @@ type Env struct {
 
 // NewEnv allocates and initializes a new Env.
 //
-// The engine environment itself is created by Open, when the LMDB version
+// The engine environment itself is created by Open, when the engine
 // driving it is decided; errors from mdb_env_create are therefore reported by
 // Open rather than NewEnv.
 //
@@ -129,10 +129,10 @@ func NewEnv() (*Env, error) {
 //
 // Open decides which bundled LMDB engine drives this environment: an existing
 // database is opened with the engine matching its on-disk format (see
-// SniffFormat); a new database uses the version requested with
-// SetFormat, or the process-wide default (V09 unless changed). If the
-// on-disk format conflicts with an explicitly requested version, Open fails
-// with ErrFormatConflict.
+// SniffFormat); a new database uses the format requested with SetFormat, or
+// the process-wide default (V09 unless changed). If the on-disk format
+// conflicts with an explicitly requested format, Open fails with
+// ErrFormatConflict.
 //
 // If Open fails the Env remains unopened: Open may be retried (with buffered
 // settings intact) and Close remains safe.
@@ -170,7 +170,7 @@ func (env *Env) Open(path string, flags uint, mode os.FileMode) error {
 		}
 		ver = sniffed
 	case ver.valid():
-		// New database: use the explicitly requested version.
+		// New database: use the explicitly requested format.
 	default:
 		ver = defaultFormat()
 	}
