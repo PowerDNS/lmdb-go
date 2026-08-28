@@ -100,7 +100,7 @@ func TestEnv_preOpen_maxKeySize(t *testing.T) {
 	// Post-open the value is engine-dependent: 0.9's compile-time constant
 	// is 511; 1.0 computes it from the page size (8122 for 4K pages).
 	n := env.MaxKeySize()
-	switch env.LMDBVersion() {
+	switch env.Format() {
 	case V09:
 		if n != 511 {
 			t.Errorf("post-open MaxKeySize %d (!= 511 on the 0.9 engine)", n)

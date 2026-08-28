@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-func testOpenVersioned(t *testing.T, dir string, req LMDBVersion) (*Env, error) {
+func testOpenVersioned(t *testing.T, dir string, req Format) (*Env, error) {
 	t.Helper()
 	env, err := NewEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if req.valid() {
-		if err := env.SetLMDBVersion(req); err != nil {
+		if err := env.SetFormat(req); err != nil {
 			env.Close()
 			t.Fatal(err)
 		}
@@ -25,14 +25,14 @@ func testOpenVersioned(t *testing.T, dir string, req LMDBVersion) (*Env, error) 
 	return env, nil
 }
 
-func TestEnv_LMDBVersion(t *testing.T) {
+func TestEnv_Format(t *testing.T) {
 	env, err := NewEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer env.Close()
 
-	if got := env.LMDBVersion(); got != FormatUnknown {
+	if got := env.Format(); got != FormatUnknown {
 		t.Errorf("unopened env version: %v (!= FormatUnknown)", got)
 	}
 	if _, err := env.EngineVersion(); !errors.Is(err, ErrVersionUndetermined) {
@@ -42,7 +42,7 @@ func TestEnv_LMDBVersion(t *testing.T) {
 	if err := env.Open(t.TempDir(), 0, 0644); err != nil {
 		t.Fatal(err)
 	}
-	got := env.LMDBVersion()
+	got := env.Format()
 	if !got.valid() {
 		t.Fatalf("opened env has no valid version: %v", got)
 	}
@@ -50,8 +50,8 @@ func TestEnv_LMDBVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("engine under test: %s (LMDBVersion %s)", ev, got)
-	wantMajor := map[LMDBVersion]int{V09: 0, V10: 1}[got]
+	t.Logf("engine under test: %s (Format %s)", ev, got)
+	wantMajor := map[Format]int{V09: 0, V10: 1}[got]
 	if ev.Major != wantMajor {
 		t.Errorf("EngineVersion.Major = %d, want %d for %v", ev.Major, wantMajor, got)
 	}
@@ -60,36 +60,36 @@ func TestEnv_LMDBVersion(t *testing.T) {
 	}
 }
 
-func TestEnv_SetLMDBVersion_afterOpen(t *testing.T) {
+func TestEnv_SetFormat_afterOpen(t *testing.T) {
 	env := setup(t)
 	defer clean(env, t)
-	if err := env.SetLMDBVersion(V09); err == nil {
-		t.Error("expected error from SetLMDBVersion after Open")
+	if err := env.SetFormat(V09); err == nil {
+		t.Error("expected error from SetFormat after Open")
 	}
 }
 
-func TestEnv_SetLMDBVersion_invalid(t *testing.T) {
+func TestEnv_SetFormat_invalid(t *testing.T) {
 	env, err := NewEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer env.Close()
-	if err := env.SetLMDBVersion(LMDBVersion(7)); !errors.Is(err, ErrInvalidVersion) {
-		t.Errorf("expected ErrInvalidVersion, got %v", err)
+	if err := env.SetFormat(Format(7)); !errors.Is(err, ErrInvalidFormat) {
+		t.Errorf("expected ErrInvalidFormat, got %v", err)
 	}
-	if err := SetDefaultLMDBVersion(LMDBVersion(7)); !errors.Is(err, ErrInvalidVersion) {
-		t.Errorf("expected ErrInvalidVersion, got %v", err)
+	if err := SetDefaultFormat(Format(7)); !errors.Is(err, ErrInvalidFormat) {
+		t.Errorf("expected ErrInvalidFormat, got %v", err)
 	}
 }
 
 // TestEnv_versionConflict: an explicitly requested version that contradicts
-// an existing database's format must fail with ErrVersionConflict, in both
+// an existing database's format must fail with ErrFormatConflict, in both
 // directions.
 func TestEnv_versionConflict(t *testing.T) {
 	if !v10Available {
 		t.Skip("LMDB 1.0 engine not available in this build")
 	}
-	for _, tc := range []struct{ have, want LMDBVersion }{
+	for _, tc := range []struct{ have, want Format }{
 		{V09, V10},
 		{V10, V09},
 	} {
@@ -97,8 +97,8 @@ func TestEnv_versionConflict(t *testing.T) {
 			dir := t.TempDir()
 			createEnvFile(t, dir, tc.have, 0)
 			_, err := testOpenVersioned(t, dir, tc.want)
-			if !errors.Is(err, ErrVersionConflict) {
-				t.Fatalf("expected ErrVersionConflict, got %v", err)
+			if !errors.Is(err, ErrFormatConflict) {
+				t.Fatalf("expected ErrFormatConflict, got %v", err)
 			}
 		})
 	}
@@ -113,11 +113,11 @@ func TestEnv_existingFormatWins(t *testing.T) {
 	dir := t.TempDir()
 	createEnvFile(t, dir, V09, 0)
 
-	if err := SetDefaultLMDBVersion(V10); err != nil {
+	if err := SetDefaultFormat(V10); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := SetDefaultLMDBVersion(FormatUnknown); err != nil {
+		if err := SetDefaultFormat(FormatUnknown); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -127,42 +127,42 @@ func TestEnv_existingFormatWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer env.Close()
-	if got := env.LMDBVersion(); got != V09 {
+	if got := env.Format(); got != V09 {
 		t.Errorf("existing 0.9 database opened as %v", got)
 	}
 }
 
-func TestSetDefaultLMDBVersion(t *testing.T) {
+func TestSetDefaultFormat(t *testing.T) {
 	if !v10Available {
 		t.Skip("LMDB 1.0 engine not available in this build")
 	}
 	// Explicit setter beats the environment variable.
-	t.Setenv(DefaultVersionEnvVar, "09")
-	if err := SetDefaultLMDBVersion(V10); err != nil {
+	t.Setenv(DefaultFormatEnvVar, "09")
+	if err := SetDefaultFormat(V10); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := SetDefaultLMDBVersion(FormatUnknown); err != nil {
+		if err := SetDefaultFormat(FormatUnknown); err != nil {
 			t.Fatal(err)
 		}
 	}()
-	if got := defaultLMDBVersion(); got != V10 {
+	if got := defaultFormat(); got != V10 {
 		t.Errorf("default version %v (!= V10, explicit setter must win)", got)
 	}
 
 	// Clearing the setter falls back to the environment variable.
-	if err := SetDefaultLMDBVersion(FormatUnknown); err != nil {
+	if err := SetDefaultFormat(FormatUnknown); err != nil {
 		t.Fatal(err)
 	}
-	if got := defaultLMDBVersion(); got != V09 {
+	if got := defaultFormat(); got != V09 {
 		t.Errorf("default version %v (!= V09 from env var)", got)
 	}
-	t.Setenv(DefaultVersionEnvVar, "10")
-	if got := defaultLMDBVersion(); got != V10 {
+	t.Setenv(DefaultFormatEnvVar, "10")
+	if got := defaultFormat(); got != V10 {
 		t.Errorf("default version %v (!= V10 from env var)", got)
 	}
-	t.Setenv(DefaultVersionEnvVar, "")
-	if got := defaultLMDBVersion(); got != V09 {
+	t.Setenv(DefaultFormatEnvVar, "")
+	if got := defaultFormat(); got != V09 {
 		t.Errorf("default version %v (!= built-in V09)", got)
 	}
 }
@@ -175,14 +175,14 @@ func TestEnv_crossFormatSimultaneous(t *testing.T) {
 		t.Skip("LMDB 1.0 engine not available in this build")
 	}
 
-	envs := map[LMDBVersion]*Env{}
-	for _, ver := range []LMDBVersion{V09, V10} {
+	envs := map[Format]*Env{}
+	for _, ver := range []Format{V09, V10} {
 		env, err := testOpenVersioned(t, t.TempDir(), ver)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer env.Close()
-		if got := env.LMDBVersion(); got != ver {
+		if got := env.Format(); got != ver {
 			t.Fatalf("requested %v, got %v", ver, got)
 		}
 		envs[ver] = env
@@ -226,7 +226,7 @@ func TestEnv_crossFormatSimultaneous(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v: %v", ver, err)
 		}
-		wantMajor := map[LMDBVersion]int{V09: 0, V10: 1}[ver]
+		wantMajor := map[Format]int{V09: 0, V10: 1}[ver]
 		if ev.Major != wantMajor {
 			t.Errorf("%v: engine major %d (!= %d)", ver, ev.Major, wantMajor)
 		}

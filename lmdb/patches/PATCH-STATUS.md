@@ -32,4 +32,4 @@ applied.
 - **Re-derivation after a 1.0.x bump:** locate `mdb_cursor_close`, confirm
   whether upstream still unrefs before the tracked check; if fixed upstream,
   drop the patch. Verify with `scripts/test-cursor-close-asan.sh` and
-  `LMDBGO_DEFAULT_VERSION=10 go test ./lmdb`.
+  `LMDBGO_DEFAULT_FORMAT=10 go test ./lmdb`.

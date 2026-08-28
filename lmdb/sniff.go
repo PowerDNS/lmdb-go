@@ -39,7 +39,7 @@ var ErrFormatUnsupported = errors.New("lmdb: unsupported database format (writte
 // database yields an OpError wrapping Invalid; a valid LMDB file of an
 // unknown data version yields an OpError wrapping VersionMismatch; the
 // lmdb-js prerelease format yields ErrFormatUnsupported.
-func SniffFormat(path string, flags uint) (LMDBVersion, error) {
+func SniffFormat(path string, flags uint) (Format, error) {
 	datafile := path
 	if flags&NoSubdir == 0 {
 		datafile = filepath.Join(path, "data.mdb")

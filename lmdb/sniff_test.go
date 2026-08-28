@@ -10,7 +10,7 @@ import (
 
 // createEnvFile creates a database of the given version in dir and returns
 // after closing it.
-func createEnvFile(t *testing.T, dir string, ver LMDBVersion, flags uint) {
+func createEnvFile(t *testing.T, dir string, ver Format, flags uint) {
 	t.Helper()
 	env, err := NewEnv()
 	if err != nil {
@@ -18,7 +18,7 @@ func createEnvFile(t *testing.T, dir string, ver LMDBVersion, flags uint) {
 	}
 	defer env.Close()
 	if ver.valid() {
-		if err := env.SetLMDBVersion(ver); err != nil {
+		if err := env.SetFormat(ver); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -130,7 +130,7 @@ func TestSniffFormat_fixtures(t *testing.T) {
 		name        string
 		magicOffset int
 		dataVersion uint32
-		wantVer     LMDBVersion
+		wantVer     Format
 		wantErrno   Errno // 0 means no Errno expected
 		wantJSErr   bool
 	}{

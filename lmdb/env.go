@@ -93,7 +93,7 @@ type Env struct {
 	// replayed onto the engine env right before mdb_env_open.
 	opened bool // Open succeeded; _env is valid and open
 	closed bool // Close was called
-	reqVer LMDBVersion
+	reqVer Format
 
 	pendingFlags      uint
 	pendingMapSize    int64
@@ -130,9 +130,9 @@ func NewEnv() (*Env, error) {
 // Open decides which bundled LMDB engine drives this environment: an existing
 // database is opened with the engine matching its on-disk format (see
 // SniffFormat); a new database uses the version requested with
-// SetLMDBVersion, or the process-wide default (V09 unless changed). If the
+// SetFormat, or the process-wide default (V09 unless changed). If the
 // on-disk format conflicts with an explicitly requested version, Open fails
-// with ErrVersionConflict.
+// with ErrFormatConflict.
 //
 // If Open fails the Env remains unopened: Open may be retried (with buffered
 // settings intact) and Close remains safe.
@@ -166,13 +166,13 @@ func (env *Env) Open(path string, flags uint, mode os.FileMode) error {
 	switch {
 	case sniffed.valid():
 		if ver.valid() && ver != sniffed {
-			return ErrVersionConflict
+			return ErrFormatConflict
 		}
 		ver = sniffed
 	case ver.valid():
 		// New database: use the explicitly requested version.
 	default:
-		ver = defaultLMDBVersion()
+		ver = defaultFormat()
 	}
 	if ver == V10 && !v10Available {
 		return errV10Unavailable
@@ -363,9 +363,6 @@ func (env *Env) Close() error {
 	return errors.New("environment is already closed")
 }
 
-// CopyFD copies env to the the file descriptor fd.
-//
-// See mdb_env_copyfd.
 // requireOpen guards methods that need an open engine env: v1 passed the
 // handle straight into C, where an unopened env crashed (mdb_env_stat) or
 // returned unhelpful errnos. Callers must hold closeLock (read) while using
@@ -380,6 +377,9 @@ func (env *Env) requireOpen() error {
 	return nil
 }
 
+// CopyFD copies env to the the file descriptor fd.
+//
+// See mdb_env_copyfd.
 func (env *Env) CopyFD(fd uintptr) error {
 	env.closeLock.RLock()
 	defer env.closeLock.RUnlock()

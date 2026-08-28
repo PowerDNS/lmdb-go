@@ -15,8 +15,8 @@ series, whose on-disk formats are mutually incompatible. Each Env is driven by
 exactly one engine, decided at Open: an existing database is always opened
 with the engine matching its on-disk format (detected safely, see
 SniffFormat), while a new database uses the version requested with
-Env.SetLMDBVersion or the process-wide default (V09 unless changed with
-SetDefaultLMDBVersion or the LMDBGO_DEFAULT_VERSION environment variable).
+Env.SetFormat or the process-wide default (V09 unless changed with
+SetDefaultFormat or the LMDBGO_DEFAULT_FORMAT environment variable).
 Databases of both formats can be open simultaneously in one process. lmdb-go
 never converts a database between formats; migrating means dumping with an
 environment of one version and loading into another.

@@ -16,12 +16,12 @@ symbol-rename headers, and selects the engine **per environment** at runtime:
   file can rewrite the lock file first.
 - **New databases** default to the **0.9 format** for interoperability while
   other tools still ship LMDB 0.9. Opt into 1.0 per environment with
-  `Env.SetLMDBVersion(lmdb.V10)` before `Open`, process-wide with
-  `lmdb.SetDefaultLMDBVersion`, or via the `LMDBGO_DEFAULT_VERSION=10`
+  `Env.SetFormat(lmdb.V10)` before `Open`, process-wide with
+  `lmdb.SetDefaultFormat`, or via the `LMDBGO_DEFAULT_FORMAT=10`
   environment variable.
 - Both formats can be **open simultaneously in one process** (e.g. for a
   dump-and-reload migration; lmdb-go never converts formats in place).
-- `Env.LMDBVersion` and `Env.EngineVersion` report the engine driving an
+- `Env.Format` and `Env.EngineVersion` report the engine driving an
   environment. The package-level `Version` reports the newest bundled
   engine, with a release string naming both.
 - **v1 and v2 can be imported by the same binary** (all v2 C symbols are

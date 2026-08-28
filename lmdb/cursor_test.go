@@ -982,7 +982,7 @@ func BenchmarkCursor_Renew(b *testing.B) {
 // lmdb/patches/lmdb10/cursor-close-after-txn.patch for it.  If that
 // regresses, this test brings the test binary down with SIGSEGV.
 func TestCursor_Close_afterTxn(t *testing.T) {
-	for _, ver := range []LMDBVersion{V09, V10} {
+	for _, ver := range []Format{V09, V10} {
 		t.Run(ver.String(), func(t *testing.T) {
 			if ver == V10 && !v10Available {
 				t.Skip("LMDB 1.0 engine not available in this build")
@@ -992,13 +992,13 @@ func TestCursor_Close_afterTxn(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer env.Close()
-			if err = env.SetLMDBVersion(ver); err != nil {
+			if err = env.SetFormat(ver); err != nil {
 				t.Fatal(err)
 			}
 			if err = env.Open(t.TempDir(), 0, 0644); err != nil {
 				t.Fatal(err)
 			}
-			if got := env.LMDBVersion(); got != ver {
+			if got := env.Format(); got != ver {
 				t.Fatalf("environment is not using the requested engine: %v (!= %v)", got, ver)
 			}
 

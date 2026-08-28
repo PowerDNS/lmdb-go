@@ -11,11 +11,11 @@ is drop-in compatible with v1 apart from the import path
 
 ### New API
 
-* `Env.SetLMDBVersion` / `Env.LMDBVersion` / `Env.EngineVersion` — per-env
+* `Env.SetFormat` / `Env.Format` / `Env.EngineVersion` — per-env
   engine selection (new databases only; an explicit request conflicting with
-  an existing database's format fails with `ErrVersionConflict`) and
+  an existing database's format fails with `ErrFormatConflict`) and
   introspection.
-* `SetDefaultLMDBVersion`, `LMDBGO_DEFAULT_VERSION` environment variable —
+* `SetDefaultFormat`, `LMDBGO_DEFAULT_FORMAT` environment variable —
   process-wide default for new databases (`V09` unless changed).
 * `SniffFormat` — detect a database's format without opening it (safe: a
   wrong-version `mdb_env_open` can clobber the lock file). lmdb-js prerelease

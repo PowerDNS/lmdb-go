@@ -59,7 +59,7 @@ func TestV1WriteV2Read(t *testing.T) {
 	if err := env2.Open(dir, 0, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if got := env2.LMDBVersion(); got != lmdb2.V09 {
+	if got := env2.Format(); got != lmdb2.V09 {
 		t.Errorf("v2 opened v1 database with engine %v", got)
 	}
 	err = env2.View(func(txn *lmdb2.Txn) error {
@@ -92,7 +92,7 @@ func TestV2WriteV1Read(t *testing.T) {
 	if err := env2.Open(dir, 0, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if got := env2.LMDBVersion(); got != lmdb2.V09 {
+	if got := env2.Format(); got != lmdb2.V09 {
 		t.Fatalf("v2 default format is %v (!= V09)", got)
 	}
 	err = env2.Update(func(txn *lmdb2.Txn) error {
@@ -146,7 +146,7 @@ func TestV1CannotOpenV10Format(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := env2.SetLMDBVersion(lmdb2.V10); err != nil {
+	if err := env2.SetFormat(lmdb2.V10); err != nil {
 		t.Fatal(err)
 	}
 	if err := env2.Open(dir, 0, 0644); err != nil {
