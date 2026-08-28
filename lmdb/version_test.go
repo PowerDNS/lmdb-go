@@ -248,3 +248,86 @@ func TestEnv_crossFormatSimultaneous(t *testing.T) {
 		}
 	}
 }
+
+// TestEnv_PrevSnapshot exercises the lmdb.PrevSnapshot open flag: on the 1.0
+// engine it opens the previous snapshot (losing the latest transaction); the
+// 0.9 engine has no equivalent and rejects the flag with EINVAL.
+func TestEnv_PrevSnapshot(t *testing.T) {
+	key := []byte("psnap-key")
+	put := func(env *Env, val string) error {
+		return env.Update(func(txn *Txn) error {
+			db, err := txn.OpenRoot(0)
+			if err != nil {
+				return err
+			}
+			return txn.Put(db, key, []byte(val), 0)
+		})
+	}
+
+	t.Run("v10", func(t *testing.T) {
+		if !v10Available {
+			t.Skip("LMDB 1.0 engine not available in this build")
+		}
+		dir := t.TempDir()
+		env, err := testOpenVersioned(t, dir, V10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := put(env, "first"); err != nil {
+			t.Fatal(err)
+		}
+		if err := put(env, "second"); err != nil {
+			t.Fatal(err)
+		}
+		if err := env.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		prev, err := NewEnv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer prev.Close()
+		if err := prev.Open(dir, PrevSnapshot|Readonly, 0644); err != nil {
+			t.Fatal(err)
+		}
+		err = prev.View(func(txn *Txn) error {
+			db, err := txn.OpenRoot(0)
+			if err != nil {
+				return err
+			}
+			got, err := txn.Get(db, key)
+			if err != nil {
+				return err
+			}
+			if string(got) != "first" {
+				t.Errorf("previous snapshot has %q (want %q)", got, "first")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("v09rejects", func(t *testing.T) {
+		dir := t.TempDir()
+		env, err := testOpenVersioned(t, dir, V09)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := env.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		env2, err := NewEnv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer env2.Close()
+		err = env2.Open(dir, PrevSnapshot|Readonly, 0644)
+		if !errIsEINVAL(err) {
+			t.Errorf("expected EINVAL from the 0.9 engine, got %v", err)
+		}
+	})
+}

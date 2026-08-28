@@ -41,6 +41,18 @@ const (
 	NoLock      = C.MDB_NOLOCK     // Danger zone. LMDB does not use any locks.
 	NoReadahead = C.MDB_NORDAHEAD  // Disable readahead. Requires OS support.
 	NoMemInit   = C.MDB_NOMEMINIT  // Disable LMDB memory initialization.
+
+	// PrevSnapshot opens the environment with the previous snapshot rather
+	// than the latest one. This loses the latest transaction, but may help
+	// work around some types of corruption. If opened with write access,
+	// this must be the only process using the environment; the flag is
+	// automatically reset after a write transaction is successfully
+	// committed.
+	//
+	// Only the LMDB 1.0 engine supports this flag; opening a 0.9-format
+	// environment with it fails with EINVAL (the 0.9 engine has no
+	// equivalent).
+	PrevSnapshot = C.MDB_PREVSNAPSHOT
 )
 
 // These flags are exclusively used in the Env.CopyFlags and Env.CopyFDFlags

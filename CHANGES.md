@@ -24,6 +24,10 @@ is drop-in compatible with v1 apart from the import path
   `EnvEncryption`, `TxnPending`, `CantRollback`, `DBIsBusy`, `ShortWrite`,
   `EnvBusy`, `IsReadonly`, `AddrBusy`), always defined; the 0.9 engine never
   returns them.
+* `PrevSnapshot` open flag (`MDB_PREVSNAPSHOT`): open the environment with
+  the previous snapshot rather than the latest one, losing the latest
+  transaction — useful for working around some types of corruption. LMDB
+  1.0 engine only; the 0.9 engine rejects it with `EINVAL`.
 
 ### Internals
 
