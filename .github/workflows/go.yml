@@ -96,3 +96,18 @@ jobs:
       run: go test -count=1 ./...
       env:
         LMDBGO_DEFAULT_FORMAT: "10"
+
+  macos-test:
+    runs-on: macos-latest
+    name: macOS tests
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.x'
+    # Apple clang is the cgo compiler here. Runs the C-level checks (the
+    # ASan cursor-close reproducer builds with clang's sanitizer) and the
+    # full suite once per engine, plain and with -race.
+    - name: C checks and tests (both engines, -race)
+      run: make check-c full-test
