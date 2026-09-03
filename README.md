@@ -1,4 +1,4 @@
-# lmdb-go [![releases/v1.9.2](https://img.shields.io/badge/release-v1.9.2-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.31](https://img.shields.io/badge/C-v0.9.31-555555.svg)](https://github.com/LMDB/lmdb/blob/mdb.RE/0.9/libraries/liblmdb/CHANGES) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
+# lmdb-go [![releases/v1.9.4](https://img.shields.io/badge/release-v1.9.4-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.35](https://img.shields.io/badge/C-v0.9.35-555555.svg)](https://github.com/LMDB/lmdb/blob/mdb.RE/0.9/libraries/liblmdb/CHANGES) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
 
 Go bindings to the OpenLDAP Lightning Memory-Mapped Database (LMDB).
 

@@ -32,6 +32,8 @@ echo "Temp dir: $tmp_dir"
 curl -L "https://git.openldap.org/openldap/openldap/-/archive/LMDB_${version}/openldap-LMDB_${version}.tar.gz" | tar -C "$tmp_dir" -xvz
 cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/mdb.c" lmdb/mdb.c
 cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/lmdb.h" lmdb/lmdb.h
+cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/midl.c" lmdb/midl.c
+cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/midl.h" lmdb/midl.h
 cp "$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb/CHANGES" CHANGES.lmdb.txt
  
 if [ ! -z "$tmp_dir" ]; then 
