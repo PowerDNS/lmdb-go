@@ -1028,6 +1028,10 @@ func TestCursor_Close_afterTxn(t *testing.T) {
 // the other engine would write past its allocation.
 func TestCursor_Renew_crossEnv(t *testing.T) {
 	open := func(t *testing.T, ver Format) *Env {
+		// Cleanups run last-in-first-out: create the directory before
+		// registering env.Close, so the environment is closed before the
+		// directory is removed (Windows cannot delete a mapped data file).
+		dir := t.TempDir()
 		env, err := NewEnv()
 		if err != nil {
 			t.Fatal(err)
@@ -1036,7 +1040,7 @@ func TestCursor_Renew_crossEnv(t *testing.T) {
 		if err = env.SetFormat(ver); err != nil {
 			t.Fatal(err)
 		}
-		if err = env.Open(t.TempDir(), 0, 0644); err != nil {
+		if err = env.Open(dir, 0, 0644); err != nil {
 			t.Fatal(err)
 		}
 		if got := env.Format(); got != ver {
