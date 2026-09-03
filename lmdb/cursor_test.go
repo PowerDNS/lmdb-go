@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"syscall"
 	"testing"
 )
 
@@ -1017,6 +1018,77 @@ func TestCursor_Close_afterTxn(t *testing.T) {
 
 			// Legal per the LMDB documentation; must not crash.
 			cur.Close()
+		})
+	}
+}
+
+// TestCursor_Renew_crossEnv verifies that a cursor cannot be renewed with a
+// transaction from a different environment. Neither engine checks this, and
+// since the engines' MDB_cursor layouts differ, renewing a cursor through
+// the other engine would write past its allocation.
+func TestCursor_Renew_crossEnv(t *testing.T) {
+	open := func(t *testing.T, ver Format) *Env {
+		env, err := NewEnv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { env.Close() })
+		if err = env.SetFormat(ver); err != nil {
+			t.Fatal(err)
+		}
+		if err = env.Open(t.TempDir(), 0, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if got := env.Format(); got != ver {
+			t.Fatalf("environment is not using the requested engine: %v (!= %v)", got, ver)
+		}
+		return env
+	}
+	beginRoot := func(t *testing.T, env *Env) (*Txn, DBI) {
+		txn, err := env.BeginTxn(nil, Readonly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(txn.Abort)
+		db, err := txn.OpenRoot(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return txn, db
+	}
+
+	for _, pair := range [][2]Format{{V09, V10}, {V10, V09}, {V09, V09}, {V10, V10}} {
+		t.Run(pair[0].String()+"-to-"+pair[1].String(), func(t *testing.T) {
+			envA := open(t, pair[0])
+			envB := open(t, pair[1])
+
+			txnA, dbA := beginRoot(t, envA)
+			cur, err := txnA.OpenCursor(dbA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cur.Close()
+
+			txnB, _ := beginRoot(t, envB)
+			err = cur.Renew(txnB)
+			if !IsErrnoSys(err, syscall.EINVAL) {
+				t.Fatalf("Renew with a transaction from another Env: %v (expected EINVAL)", err)
+			}
+			if cur.Txn() != txnA {
+				t.Fatal("failed Renew rebound the cursor")
+			}
+
+			// The cursor is still usable within its own environment.
+			txnA.Reset()
+			if err = txnA.Renew(); err != nil {
+				t.Fatal(err)
+			}
+			if err = cur.Renew(txnA); err != nil {
+				t.Fatalf("Renew within the same Env: %v", err)
+			}
+			if _, _, err = cur.Get(nil, nil, First); !IsNotFound(err) {
+				t.Fatalf("Get on empty root database: %v (expected NotFound)", err)
+			}
 		})
 	}
 }

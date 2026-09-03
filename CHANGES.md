@@ -80,6 +80,10 @@ binary. v1 continues on its own branch with `v1.x.y` releases.
 * Cursor methods on a closed cursor return `EINVAL` errors (v1 panicked for
   `Get`/`Del`/`Count`; `Put` already returned `EINVAL`). Nil handles never
   reach the C engines.
+* `Cursor.Renew` with a transaction from a different `Env` returns `EINVAL`.
+  v1 passed it to C, which only validates the DBI index and would silently
+  use the cursor in the wrong environment; with two engines whose cursor
+  layouts differ, it would also write past the cursor's allocation.
 * With two bundled engines there is no single "the LMDB version", so
   package `Version`/`VersionString` report the newest bundled engine —
   numerically 1.0.x, matching the canonical header surface the bindings are

@@ -9,6 +9,7 @@ package lmdb
 import "C"
 import (
 	"runtime"
+	"syscall"
 	"unsafe"
 )
 
@@ -78,10 +79,22 @@ func openCursor(txn *Txn, db DBI) (*Cursor, error) {
 
 // Renew associates readonly cursor with txn.
 //
+// txn must belong to the same Env as the transaction the cursor was opened
+// in: a cursor is bound to a DBI of one environment, and renewing it with a
+// transaction from another environment returns EINVAL.
+//
 // See mdb_cursor_renew.
 func (c *Cursor) Renew(txn *Txn) error {
 	if c._c == nil {
 		return errClosedCursor("mdb_cursor_renew")
+	}
+	if txn.env != c.txn.env {
+		// Neither engine checks this (mdb_cursor_renew only validates the
+		// DBI index against the new txn), and the C cursor was allocated
+		// by the engine of the environment it was opened in. The two
+		// engines lay out MDB_cursor differently, so handing the cursor
+		// to the other engine would write past its allocation.
+		return &OpError{Op: "mdb_cursor_renew", Errno: syscall.EINVAL}
 	}
 	ret := C.lmdbgo2_mdb_cursor_renew(txn.ver, txn._txn, c._c)
 	err := operrno("mdb_cursor_renew", ret)
