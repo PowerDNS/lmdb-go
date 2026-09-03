@@ -6,7 +6,7 @@ package lmdbscan
 import (
 	"fmt"
 
-	"github.com/PowerDNS/lmdb-go/lmdb"
+	"github.com/PowerDNS/lmdb-go/v2/lmdb"
 )
 
 // errClosed is an error returned to the user when attempting to operate on a

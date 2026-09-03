@@ -2,6 +2,7 @@ package lmdb
 
 /*
 #include "lmdb.h"
+#include "lmdbgo.h"
 */
 import "C"
 
@@ -53,6 +54,21 @@ const (
 	BadTxn          Errno = C.MDB_BAD_TXN
 	BadValSize      Errno = C.MDB_BAD_VALSIZE
 	BadDBI          Errno = C.MDB_BAD_DBI
+
+	// Error codes introduced by LMDB 1.0. The constants come from the
+	// canonical 1.0 header and are always defined; the 0.9 engine simply
+	// never returns them.
+	Problem       Errno = C.MDB_PROBLEM
+	BadChecksum   Errno = C.MDB_BAD_CHECKSUM
+	CryptoFail    Errno = C.MDB_CRYPTO_FAIL
+	EnvEncryption Errno = C.MDB_ENV_ENCRYPTION
+	TxnPending    Errno = C.MDB_TXN_PENDING
+	CantRollback  Errno = C.MDB_CANT_ROLLBACK
+	DBIsBusy      Errno = C.MDB_DBIS_BUSY
+	ShortWrite    Errno = C.MDB_SHORT_WRITE
+	EnvBusy       Errno = C.MDB_ENV_BUSY
+	IsReadonly    Errno = C.MDB_IS_READONLY
+	AddrBusy      Errno = C.MDB_ADDR_BUSY
 )
 
 // Errno is an error type that represents the (unique) errno values defined by
@@ -74,12 +90,20 @@ type Errno C.int
 const minErrno, maxErrno C.int = C.MDB_KEYEXIST, C.MDB_LAST_ERRCODE
 
 func (e Errno) Error() string {
-	return C.GoString(C.mdb_strerror(C.int(e)))
+	return C.GoString(C.lmdbgo2_mdb_strerror(C.int(e)))
 }
 
 // _operrno is for use by tests that can't import C
 func _operrno(op string, ret int) error {
 	return operrno(op, C.int(ret))
+}
+
+// errClosedCursor is returned for operations on a closed Cursor handle.  LMDB
+// 0.9 returned EINVAL when handed a NULL cursor pointer; the Go layer performs
+// the check instead because nil handles must never reach the C engines (LMDB
+// 1.0 dereferences them unconditionally).
+func errClosedCursor(op string) error {
+	return &OpError{Op: op, Errno: syscall.EINVAL}
 }
 
 // IsNotFound returns true if the key requested in Txn.Get or Cursor.Get does

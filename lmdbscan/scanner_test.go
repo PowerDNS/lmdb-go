@@ -5,8 +5,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/PowerDNS/lmdb-go/internal/lmdbtest"
-	"github.com/PowerDNS/lmdb-go/lmdb"
+	"github.com/PowerDNS/lmdb-go/v2/internal/lmdbtest"
+	"github.com/PowerDNS/lmdb-go/v2/lmdb"
 )
 
 func TestScanner_err(t *testing.T) {

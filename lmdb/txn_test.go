@@ -431,7 +431,9 @@ func TestTxn_OpenDBI_emptyName(t *testing.T) {
 		_, err = txn.OpenDBI("", 0)
 		return err
 	})
-	if !IsErrno(err, BadValSize) {
+	// LMDB 0.9: MDB_BAD_VALSIZE
+	// LMDB 1.0: MDB_NOTFOUND
+	if !IsErrno(err, BadValSize) && !IsNotFound(err) {
 		t.Errorf("mdb_dbi_open: %v", err)
 	}
 }

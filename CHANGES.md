@@ -1,5 +1,121 @@
 # Release Change Log
 
+## v2.0.0 (unreleased)
+
+lmdb-go v2 ships **both LMDB 0.9 (0.9.35) and LMDB 1.0 (1.0.1)** in one
+module. LMDB 1.0 introduced a new on-disk format that 0.9 cannot read, and a
+C program can normally link only one of the two libraries; v2 bundles both
+and picks one per environment when it is opened. An existing database is
+opened with the engine matching its format, detected from the file header.
+A new database uses the 0.9 format unless you ask for 1.0 with
+`Env.SetFormat(lmdb.V10)`, `SetDefaultFormat`, or `LMDBGO_DEFAULT_FORMAT=10`.
+Databases of both formats can be open in the same process.
+
+**Upgrading from v1** is an import path change: `github.com/PowerDNS/lmdb-go/...`
+becomes `github.com/PowerDNS/lmdb-go/v2/...`. The Go API is otherwise
+drop-in compatible, and existing databases keep working unchanged. The edge
+cases that behave differently are listed under "Behavior differences vs v1"
+below; the README has a walkthrough. v1 and v2 can be linked into the same
+binary. v1 continues on its own branch with `v1.x.y` releases.
+
+### New API
+
+* `Env.SetFormat` / `Env.Format` / `Env.EngineVersion` — per-env
+  engine selection (new databases only; an explicit request conflicting with
+  an existing database's format fails with `ErrFormatConflict`) and
+  introspection.
+* `SetDefaultFormat`, `LMDBGO_DEFAULT_FORMAT` environment variable —
+  process-wide default for new databases (`V09` unless changed).
+* `SniffFormat` — detect a database's format without opening it (safe: a
+  wrong-version `mdb_env_open` can clobber the lock file). lmdb-js prerelease
+  files are rejected with `ErrFormatUnsupported`.
+* LMDB 1.0 error constants (`Problem`, `BadChecksum`, `CryptoFail`,
+  `EnvEncryption`, `TxnPending`, `CantRollback`, `DBIsBusy`, `ShortWrite`,
+  `EnvBusy`, `IsReadonly`, `AddrBusy`), always defined; the 0.9 engine never
+  returns them.
+* `PrevSnapshot` open flag (`MDB_PREVSNAPSHOT`): open the environment with
+  the previous snapshot rather than the latest one, losing the latest
+  transaction — useful for working around some types of corruption. LMDB
+  1.0 engine only; the 0.9 engine rejects it with `EINVAL`.
+
+### Internals
+
+* Both vendored trees are compiled behind generated symbol-rename headers
+  (`mdb09_*` / `mdb10_*`); every LMDB call dispatches through a thin C shim
+  on a per-environment engine selector. Overhead vs v1 is one `int` argument
+  plus a predicted branch per call: running the full benchmark suite against
+  v1 on the same (0.9) engine, v2 is on average slightly *faster* (1.9% less
+  time per op, geometric mean across the suite — i.e. within noise plus the
+  0.9.33 → 0.9.35 upstream delta), no benchmark got more than 2.5% slower,
+  and allocations are byte-identical (Txn and Cursor keep their v1
+  allocation size classes, pinned by a test).
+* Engine choice itself has a performance profile (upstream characteristics,
+  not dispatch): on the 1.0 engine, *creating* a readonly transaction is
+  substantially more expensive than on 0.9 (reader page cache setup;
+  +15–47% on per-op-allocating readonly benchmarks), while renewed/pooled
+  readonly transactions and write paths stay within a few percent and
+  sub-transactions are 13–18% faster. Readonly-heavy workloads on the 1.0
+  engine benefit from `Txn.Renew`/pooling, as the docs already recommend.
+* All v2 C symbols are namespaced (`lmdbgo2_*` glue), so **v1 and v2 can be
+  linked into the same binary**; `tests/coexist/` verifies this in CI.
+* The vendored trees can carry local patches (`lmdb/patches/`, applied by
+  `update-lmdb.sh`, documented in `PATCH-STATUS.md`). v2 ships
+  `cursor-close-after-txn.patch`: pristine LMDB 1.0.x has a use-after-free
+  when a read-only cursor is closed after its transaction ended (a sequence
+  LMDB documents as legal, and that lmdb-go finalizers rely on).
+
+### Behavior differences vs v1
+
+* `NewEnv` no longer creates the engine environment (the engine is only
+  known at `Open`); `mdb_env_create` errors are reported by `Open`. Pre-open
+  setters (`SetMapSize`, `SetMaxReaders`, `SetMaxDBs`, `SetFlags`,
+  `UnsetFlags`) buffer on the Go side and are replayed at `Open`; observable
+  behavior (including `EINVAL` for non-changeable flags and pre-open
+  `Flags`/`MaxReaders` reads) is preserved.
+* Pre-open `Stat`, `Info`, `Sync`, `Copy*`, `BeginTxn`, `View`, `Update` now
+  return a clean error where v1 crashed or returned obscure errnos, and
+  pre-open `ReaderCheck` returns the same error where v1 reported 0 cleared
+  entries; a failed `Open` can be retried; `Close` is always safe, also
+  before `Open`.
+* Cursor methods on a closed cursor return `EINVAL` errors (v1 panicked for
+  `Get`/`Del`/`Count`; `Put` already returned `EINVAL`). Nil handles never
+  reach the C engines.
+* `Cursor.Renew` with a transaction from a different `Env` returns `EINVAL`.
+  v1 passed it to C, which only validates the DBI index and would silently
+  use the cursor in the wrong environment; with two engines whose cursor
+  layouts differ, it would also write past the cursor's allocation.
+* With two bundled engines there is no single "the LMDB version", so
+  package `Version`/`VersionString` report the newest bundled engine —
+  numerically 1.0.x, matching the canonical header surface the bindings are
+  compiled against — with a release string naming both engines. Use
+  `Env.EngineVersion` for the engine driving a specific environment.
+* `Txn.OpenDBI("")` fails with `BadValSize` on the 0.9 engine but `NotFound`
+  on 1.0. `Env.MaxKeySize` is engine-dependent post-open (511 on 0.9; the
+  1.0 engine derives it from the page size, 8122 for 4K pages) and 511
+  pre-open.
+* Error codes −30779…−30769 (introduced by LMDB 1.0) now map to `Errno`
+  instead of `syscall.Errno`; error strings come from the 1.0 table.
+* Like v1, v2 only supports statically linking the bundled LMDB sources;
+  dynamic linking against a system liblmdb is not supported and is not
+  planned for v2.
+* Go 1.21 or newer is required.
+* The vendored 0.9 stream was upgraded 0.9.33 → 0.9.35 (see
+  `CHANGES.lmdb09.txt`); LMDB 1.0.1 is vendored as the new 10 stream (see
+  `CHANGES.lmdb10.txt`).
+
+LMDB C library changes in the 10 stream since the initial 1.0.0 vendoring:
+
+        LMDB 1.0.1 Release (2026/08/06)
+                ITS#10529 - invalidate DBIs in rollback
+                ITS#10534 - update mdb_env_get_maxkeysize() doc
+                ITS#10536 - re-fix mdb_drop(MAIN_DBI)
+                ITS#10538 - fix large writes on Windows
+                ITS#10539 - Windows build fixes
+                ITS#10540 - cleanup outdated license notices
+                ITS#10542 - Windows buffered/writethru write behavior
+                ITS#10551 - fix mdb_page_split nodesize calculation
+                ITS#10553 - Another Windows build fix
+
 ## v1.9.3 (2025-01-02)
 
 ## What's Changed

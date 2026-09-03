@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PowerDNS/lmdb-go/internal/lmdbtest"
-	"github.com/PowerDNS/lmdb-go/lmdb"
+	"github.com/PowerDNS/lmdb-go/v2/internal/lmdbtest"
+	"github.com/PowerDNS/lmdb-go/v2/lmdb"
 )
 
 var optNoLock = &lmdbtest.EnvOptions{Flags: lmdb.NoLock}

@@ -10,7 +10,7 @@ import "C"
 import (
 	"unsafe"
 
-	"github.com/PowerDNS/lmdb-go/internal/lmdbarch"
+	"github.com/PowerDNS/lmdb-go/v2/internal/lmdbarch"
 )
 
 // valSizeBits is the number of bits which constraining the length of the
