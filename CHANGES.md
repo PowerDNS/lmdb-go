@@ -73,8 +73,10 @@ binary. v1 continues on its own branch with `v1.x.y` releases.
   behavior (including `EINVAL` for non-changeable flags and pre-open
   `Flags`/`MaxReaders` reads) is preserved.
 * Pre-open `Stat`, `Info`, `Sync`, `Copy*`, `BeginTxn`, `View`, `Update` now
-  return a clean error where v1 crashed or returned obscure errnos; a failed
-  `Open` can be retried; `Close` is always safe, also before `Open`.
+  return a clean error where v1 crashed or returned obscure errnos, and
+  pre-open `ReaderCheck` returns the same error where v1 reported 0 cleared
+  entries; a failed `Open` can be retried; `Close` is always safe, also
+  before `Open`.
 * Cursor methods on a closed cursor return `EINVAL` errors (v1 panicked for
   `Get`/`Del`/`Count`; `Put` already returned `EINVAL`). Nil handles never
   reach the C engines.

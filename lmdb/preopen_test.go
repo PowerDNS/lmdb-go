@@ -155,7 +155,7 @@ func TestEnv_preOpen_errors(t *testing.T) {
 	}); err != nil {
 		t.Errorf("ReaderList: %v", err)
 	}
-	if n, err := env.ReaderCheck(); err != nil || n != 0 {
+	if n, err := env.ReaderCheck(); !errors.Is(err, errNotOpen) || n != 0 {
 		t.Errorf("ReaderCheck: %d, %v", n, err)
 	}
 }

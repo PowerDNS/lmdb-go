@@ -308,22 +308,15 @@ func (env *Env) ReaderList(fn func(string) error) error {
 }
 
 // ReaderCheck clears stale entries from the reader lock table and returns the
-// number of entries cleared.
+// number of entries cleared. It returns an error if the environment is not
+// open (mdb_reader_check itself reports 0 cleared entries in that case).
 //
 // See mdb_reader_check()
 func (env *Env) ReaderCheck() (int, error) {
 	env.closeLock.RLock()
 	defer env.closeLock.RUnlock()
-	if !env.opened {
-		// mdb_reader_check on an unopened env reports 0 cleared entries; a
-		// zero-value Env yields EINVAL as in the engines / v1.
-		if env.closed {
-			return 0, errClosed
-		}
-		if env.ckey == nil {
-			return 0, &OpError{Op: "mdb_reader_check", Errno: syscall.EINVAL}
-		}
-		return 0, nil
+	if err := env.requireOpen(); err != nil {
+		return 0, err
 	}
 	var _dead C.int
 	ret := C.lmdbgo2_mdb_reader_check(env.ver, env._env, &_dead)
