@@ -2,7 +2,7 @@
 
 ## v2.0.0 (unreleased)
 
-lmdb-go v2 ships **both LMDB 0.9 (0.9.35) and LMDB 1.0 (1.0.0)** in one
+lmdb-go v2 ships **both LMDB 0.9 (0.9.35) and LMDB 1.0 (1.0.1)** in one
 module. LMDB 1.0 introduced a new on-disk format that 0.9 cannot read, and a
 C program can normally link only one of the two libraries; v2 bundles both
 and picks one per environment when it is opened. An existing database is
@@ -60,7 +60,7 @@ binary. v1 continues on its own branch with `v1.x.y` releases.
   linked into the same binary**; `tests/coexist/` verifies this in CI.
 * The vendored trees can carry local patches (`lmdb/patches/`, applied by
   `update-lmdb.sh`, documented in `PATCH-STATUS.md`). v2 ships
-  `cursor-close-after-txn.patch`: pristine LMDB 1.0.0 has a use-after-free
+  `cursor-close-after-txn.patch`: pristine LMDB 1.0.x has a use-after-free
   when a read-only cursor is closed after its transaction ended (a sequence
   LMDB documents as legal, and that lmdb-go finalizers rely on).
 
@@ -99,8 +99,21 @@ binary. v1 continues on its own branch with `v1.x.y` releases.
   clear error.
 * Go 1.21 or newer is required.
 * The vendored 0.9 stream was upgraded 0.9.33 → 0.9.35 (see
-  `CHANGES.lmdb09.txt`); LMDB 1.0.0 is vendored as the new 10 stream (see
+  `CHANGES.lmdb09.txt`); LMDB 1.0.1 is vendored as the new 10 stream (see
   `CHANGES.lmdb10.txt`).
+
+LMDB C library changes in the 10 stream since the initial 1.0.0 vendoring:
+
+        LMDB 1.0.1 Release (2026/08/06)
+                ITS#10529 - invalidate DBIs in rollback
+                ITS#10534 - update mdb_env_get_maxkeysize() doc
+                ITS#10536 - re-fix mdb_drop(MAIN_DBI)
+                ITS#10538 - fix large writes on Windows
+                ITS#10539 - Windows build fixes
+                ITS#10540 - cleanup outdated license notices
+                ITS#10542 - Windows buffered/writethru write behavior
+                ITS#10551 - fix mdb_page_split nodesize calculation
+                ITS#10553 - Another Windows build fix
 
 ## v1.9.3 (2025-01-02)
 

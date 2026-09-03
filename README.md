@@ -1,4 +1,4 @@
-# lmdb-go [![releases](https://img.shields.io/badge/release-v2-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.35+v1.0.0](https://img.shields.io/badge/C-v0.9.35%20%2B%20v1.0.0-555555.svg)](https://git.openldap.org/openldap/openldap/-/tags?search=LMDB_) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
+# lmdb-go [![releases](https://img.shields.io/badge/release-v2-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.35+v1.0.1](https://img.shields.io/badge/C-v0.9.35%20%2B%20v1.0.1-555555.svg)](https://git.openldap.org/openldap/openldap/-/tags?search=LMDB_) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
 
 > **Looking for lmdb-go v1?** The v1 series (`github.com/PowerDNS/lmdb-go`,
 > LMDB 0.9 only) lives on the [`v1` branch](https://github.com/PowerDNS/lmdb-go/tree/v1)
@@ -117,7 +117,7 @@ The complete list of differences is in [CHANGES.md](CHANGES.md).
 
 ## Technical details
 
-- **Bundled versions.** v2 currently bundles LMDB 0.9.35 and LMDB 1.0.0. As
+- **Bundled versions.** v2 currently bundles LMDB 0.9.35 and LMDB 1.0.1. As
   in v1, the bundled LMDB sources are always statically linked; dynamic
   linking against a system liblmdb is not supported.
 - **Symbol renaming and dispatch.** The two vendored trees are compiled behind
@@ -149,7 +149,7 @@ The complete list of differences is in [CHANGES.md](CHANGES.md).
   kinds of corruption; the 0.9 engine rejects it with `EINVAL`.
 - **Local patches.** The vendored trees can carry local patches (see
   [lmdb/patches/](lmdb/patches/)), applied by `update-lmdb.sh` when a stream
-  is updated. v2 ships a fix for a use-after-free in LMDB 1.0.0 when a
+  is updated. v2 ships a fix for a use-after-free in LMDB 1.0.x when a
   read-only cursor is closed after its transaction has ended, a sequence that
   LMDB documents as legal and that lmdb-go finalizers rely on.
 

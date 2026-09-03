@@ -33,7 +33,7 @@ version="${2:-}"
 usage() {
     echo "USAGE: $0 <stream> <desired-version>"
     echo "  stream: 09 (LMDB 0.9.x) or 10 (LMDB 1.0.x)"
-    echo "  e.g.: $0 09 0.9.35   or   $0 10 1.0.0"
+    echo "  e.g.: $0 09 0.9.35   or   $0 10 1.0.1"
     echo "Check https://git.openldap.org/openldap/openldap/-/tags?sort=updated_desc&search=LMDB_ for available versions"
 }
 

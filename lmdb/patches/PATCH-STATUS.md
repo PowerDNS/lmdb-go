@@ -33,3 +33,5 @@ applied.
   whether upstream still unrefs before the tracked check; if fixed upstream,
   drop the patch. Verify with `scripts/test-cursor-close-asan.sh` and
   `LMDBGO_DEFAULT_FORMAT=10 go test ./lmdb`.
+- **1.0.1 (2026-09-03):** still needed; the `mdb_cursor_close` region is
+  unchanged upstream and the patch applies with a 25-line offset.
