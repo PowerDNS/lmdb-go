@@ -2,12 +2,21 @@
 
 ## v2.0.0 (unreleased)
 
-lmdb-go v2 bundles **two LMDB engines** — 0.9.35 and 1.0.0, whose on-disk
-formats are mutually incompatible — and selects the engine per environment at
-`Env.Open`: existing databases by sniffing the data file's format, new
-databases via the requested or default version (0.9 by default). The Go API
-is drop-in compatible with v1 apart from the import path
-(`github.com/PowerDNS/lmdb-go/v2/...`).
+lmdb-go v2 ships **both LMDB 0.9 (0.9.35) and LMDB 1.0 (1.0.0)** in one
+module. LMDB 1.0 introduced a new on-disk format that 0.9 cannot read, and a
+C program can normally link only one of the two libraries; v2 bundles both
+and picks one per environment when it is opened. An existing database is
+opened with the engine matching its format, detected from the file header.
+A new database uses the 0.9 format unless you ask for 1.0 with
+`Env.SetFormat(lmdb.V10)`, `SetDefaultFormat`, or `LMDBGO_DEFAULT_FORMAT=10`.
+Databases of both formats can be open in the same process.
+
+**Upgrading from v1** is an import path change: `github.com/PowerDNS/lmdb-go/...`
+becomes `github.com/PowerDNS/lmdb-go/v2/...`. The Go API is otherwise
+drop-in compatible, and existing databases keep working unchanged. The edge
+cases that behave differently are listed under "Behavior differences vs v1"
+below; the README has a walkthrough. v1 and v2 can be linked into the same
+binary. v1 continues on its own branch with `v1.x.y` releases.
 
 ### New API
 

@@ -1,41 +1,157 @@
 # lmdb-go [![releases](https://img.shields.io/badge/release-v2-375eab.svg)](https://github.com/PowerDNS/lmdb-go/releases) [![C/v0.9.35+v1.0.0](https://img.shields.io/badge/C-v0.9.35%20%2B%20v1.0.0-555555.svg)](https://git.openldap.org/openldap/openldap/-/tags?search=LMDB_) [![Build Status](https://github.com/PowerDNS/lmdb-go/actions/workflows/go.yml/badge.svg?branch=master)]
 
+> **Looking for lmdb-go v1?** The v1 series (`github.com/PowerDNS/lmdb-go`,
+> LMDB 0.9 only) lives on the [`v1` branch](https://github.com/PowerDNS/lmdb-go/tree/v1)
+> and keeps receiving `v1.x.y` releases. This branch is **v2**
+> (`github.com/PowerDNS/lmdb-go/v2`).
+
 Go bindings to the OpenLDAP Lightning Memory-Mapped Database (LMDB).
 
-## LMDB versions: what is new in v2
+## What is v2?
 
-LMDB 1.0 (released June 2026) uses an on-disk format that is mutually
-incompatible with the 0.9.x series, while keeping the same C API and symbol
-names — so a program can normally link only one of them. lmdb-go v2 bundles
-**both** engines (currently 0.9.35 and 1.0.0), compiled behind generated
-symbol-rename headers, and selects the engine **per environment** at runtime:
+lmdb-go v2 ships **both LMDB 0.9 and LMDB 1.0** in one Go module, and lets a
+program use either of them, or both, at runtime.
 
-- **Existing databases** are always opened with the engine matching their
-  on-disk format. The format is detected by reading the data file's meta page
-  (`SniffFormat`), never by trying an open — a failed LMDB 1.0 open of a 0.9
-  file can rewrite the lock file first.
-- **New databases** default to the **0.9 format** for interoperability while
-  other tools still ship LMDB 0.9. Opt into 1.0 per environment with
-  `Env.SetFormat(lmdb.V10)` before `Open`, process-wide with
-  `lmdb.SetDefaultFormat`, or via the `LMDBGO_DEFAULT_FORMAT=10`
-  environment variable.
-- Both formats can be **open simultaneously in one process** (e.g. for a
-  dump-and-reload migration; lmdb-go never converts formats in place).
-- `Env.Format` and `Env.EngineVersion` report the engine driving an
-  environment. The package-level `Version` reports the newest bundled
-  engine, with a release string naming both.
-- **v1 and v2 can be imported by the same binary** (all v2 C symbols are
-  namespaced), which also means migrating is only an import-path change:
-  `github.com/PowerDNS/lmdb-go/...` → `github.com/PowerDNS/lmdb-go/v2/...`.
-- On **Windows** only the 0.9 engine is available (upstream LMDB 1.0 is
-  currently broken there). As in v1, the bundled LMDB sources are always
-  statically linked; dynamic linking against a system liblmdb is not
-  supported.
-- The vendored trees can carry local patches (see `lmdb/patches/`); v2 ships
-  a fix for LMDB 1.0.0's use-after-free when closing a read-only cursor
-  after its transaction has ended.
+LMDB 1.0 (released June 2026) stores data in a new on-disk format that LMDB
+0.9 cannot read, and vice versa. Both C libraries use the same function
+names, so a normal program can link only one of them: it either reads old
+databases or new ones. v2 removes that choice by bundling both engines under
+distinct symbol names and picking an engine **per environment** when it is
+opened:
 
-See `CHANGES.md` for the complete list of v1 → v2 behavior differences.
+- **Opening an existing database needs no configuration.** v2 looks at the
+  database file, detects whether it was written by LMDB 0.9 or 1.0, and uses
+  the matching engine. This is done without opening the environment, because
+  a failed open with the wrong LMDB version can damage the lock file.
+- **New databases are created in the 0.9 format by default**, so they stay
+  readable by software that still uses LMDB 0.9: distribution packages, the
+  `mdb_dump`/`mdb_stat` command line tools, bindings for other languages.
+  You can opt into the 1.0 format per environment, for the whole process, or
+  through an environment variable (see below).
+- **Both formats can be open at the same time in one process.** lmdb-go never
+  converts a database in place. To migrate, open the old database with one
+  `Env`, create the new one with the 1.0 format, and copy the data over.
+
+### Creating a database in the LMDB 1.0 format
+
+Request the 1.0 format on the `Env` before calling `Open`:
+
+```go
+env, err := lmdb.NewEnv()
+if err != nil {
+	// ...
+}
+defer env.Close()
+
+// SetFormat only affects databases that Open creates. An existing database
+// is always opened with the engine matching its on-disk format, and if that
+// format is not the one requested here, Open fails with
+// lmdb.ErrFormatConflict.
+if err := env.SetFormat(lmdb.V10); err != nil {
+	// ...
+}
+if err := env.SetMapSize(1 << 30); err != nil {
+	// ...
+}
+if err := env.Open("/path/to/db", 0, 0644); err != nil {
+	// ...
+}
+
+log.Printf("database uses the LMDB %s format", env.Format()) // "0.9" or "1.0"
+```
+
+To make 1.0 the default for every new database in the process, call
+`lmdb.SetDefaultFormat(lmdb.V10)` at startup, or set
+`LMDBGO_DEFAULT_FORMAT=10` in the process environment. A call to
+`SetDefaultFormat` wins over the environment variable, and `SetFormat` on an
+`Env` wins over both. `lmdb.SniffFormat` reports the format of a database
+file without opening it.
+
+## Upgrading from v1
+
+The Go API of v2 is drop-in compatible with v1. For most projects, upgrading
+is only an import path change:
+
+1. Replace `github.com/PowerDNS/lmdb-go/` with `github.com/PowerDNS/lmdb-go/v2/`
+   in your imports, for every package you use (`lmdb`, `lmdbscan`,
+   `exp/lmdbsync`). With GNU sed:
+
+   ```sh
+   find . -name '*.go' -exec sed -i 's#github.com/PowerDNS/lmdb-go/#github.com/PowerDNS/lmdb-go/v2/#g' {} +
+   ```
+
+   (On macOS use `sed -i ''`.)
+
+2. Update `go.mod`:
+
+   ```sh
+   go get github.com/PowerDNS/lmdb-go/v2@latest
+   go mod tidy
+   ```
+
+Nothing changes on disk. Your existing databases are in the 0.9 format and
+v2 keeps opening them with the 0.9 engine, and new databases stay in the 0.9
+format unless you opt into 1.0 as shown above.
+
+Things to be aware of:
+
+- **Go 1.21 or newer** is required.
+- **v1 and v2 can be linked into the same binary.** Dependencies that still
+  import v1 keep working next to your v2 code, so not everything has to move
+  at once. (An `Env` cannot be shared between the two, of course.)
+- **A few edge cases now return errors instead of panicking or crashing.**
+  Methods on a closed cursor return an `EINVAL` error, using an `Env` before
+  `Open` (for example `Stat` or `BeginTxn`) returns a clean error, and a
+  failed `Open` can be retried.
+- **`lmdb.Version` now reports the newest bundled engine** (1.0.x), with a
+  release string naming both. Use `env.EngineVersion()` for the engine driving
+  a specific environment. `env.MaxKeySize()` also depends on the engine: 511
+  bytes on 0.9, and derived from the page size on 1.0 (8122 for 4K pages).
+- **Windows builds contain only the 0.9 engine**, because upstream LMDB 1.0
+  is currently broken there. Requesting the 1.0 format fails with a clear
+  error.
+- The `lmdb_stat` and `lmdb_copy` commands in [cmd/](cmd/) work with
+  databases of either format.
+
+The complete list of differences is in [CHANGES.md](CHANGES.md).
+
+## Technical details
+
+- **Bundled versions.** v2 currently bundles LMDB 0.9.35 and LMDB 1.0.0. As
+  in v1, the bundled LMDB sources are always statically linked; dynamic
+  linking against a system liblmdb is not supported.
+- **Symbol renaming and dispatch.** The two vendored trees are compiled behind
+  generated symbol-rename headers (`mdb09_*` / `mdb10_*`), and every LMDB
+  call goes through a thin C shim that dispatches on a per-environment engine
+  selector. The overhead versus v1 is one `int` argument plus a predicted
+  branch per call: on the same 0.9 engine, the benchmark suite runs within
+  noise of v1 and allocations are byte-identical. All v2 C symbols are
+  namespaced (`lmdbgo2_*`), which is what makes linking v1 and v2 into one
+  binary possible; `tests/coexist/` verifies this in CI.
+- **Engine performance.** The engines themselves differ: on the 1.0 engine,
+  creating a read-only transaction is noticeably more expensive than on 0.9
+  (reader page cache setup), while renewed or pooled read-only transactions
+  and write paths stay within a few percent, and sub-transactions are faster.
+  Read-heavy workloads on the 1.0 engine benefit from `Txn.Renew` or pooling,
+  as the package documentation already recommends.
+- **Format detection.** `SniffFormat` reads the data file's meta page and
+  distinguishes the formats by their data version number (1 for 0.9, 3 for
+  1.0). Files in the lmdb-js prerelease format (data version 2) are rejected
+  with `ErrFormatUnsupported`. A missing or empty data file means the
+  environment does not exist yet and `Open` will create it.
+- **Runtime introspection.** `Env.Format` reports the format (and thus the
+  engine) driving an environment; `Env.EngineVersion` reports the exact
+  upstream version of that engine.
+- **LMDB 1.0 additions.** The LMDB 1.0 error constants (`Problem`,
+  `BadChecksum`, `TxnPending`, ...) are always defined; the 0.9 engine never
+  returns them. The `PrevSnapshot` open flag (`MDB_PREVSNAPSHOT`) opens the
+  environment at its previous snapshot, which can help recover from some
+  kinds of corruption; the 0.9 engine rejects it with `EINVAL`.
+- **Local patches.** The vendored trees can carry local patches (see
+  [lmdb/patches/](lmdb/patches/)), applied by `update-lmdb.sh` when a stream
+  is updated. v2 ships a fix for a use-after-free in LMDB 1.0.0 when a
+  read-only cursor is closed after its transaction has ended, a sequence that
+  LMDB documents as legal and that lmdb-go finalizers rely on.
 
 ## About this fork
 
@@ -49,13 +165,12 @@ fork. This also makes it clear that new versions released here are
 different from any upstream versions.
 
 To use this package, update all your import paths from
-`github.com/bmatsuo/lmdb-go` to `github.com/PowerDNS/lmdb-go`.
-
-This affects all versions starting from 1.9.0.
+`github.com/bmatsuo/lmdb-go` to `github.com/PowerDNS/lmdb-go` (v1) or
+`github.com/PowerDNS/lmdb-go/v2` (v2). This affects all versions starting
+from 1.9.0.
 
 Note that the experimental, never released `exp/lmdbpool` package has
 been removed in this fork.
-
 
 ## Packages
 
