@@ -21,9 +21,6 @@ Databases of both formats can be open simultaneously in one process. lmdb-go
 never converts a database between formats; migrating means dumping with an
 environment of one version and loading into another.
 
-On Windows only the 0.9 engine is available, because upstream LMDB 1.0 is
-currently broken there.
-
 # Environment
 
 An LMDB environment holds named databases (key-value stores).  An environment
@@ -158,19 +155,16 @@ import "C"
 // LMDB version". The numbers reported here are those of the newest bundled
 // engine, matching the canonical header surface the bindings are compiled
 // against (constants, error strings); the string names both bundled engines.
-// On Windows only the 0.9 engine exists and is reported alone. Use
-// Env.EngineVersion for the engine driving a specific environment.
+// Use Env.EngineVersion for the engine driving a specific environment.
 //
 // See mdb_version.
 func Version() (major, minor, patch int, s string) {
 	var maj, min, pat C.int
 	verstr := C.GoString(C.lmdbgo2_mdb_version(10, &maj, &min, &pat))
-	if v10Available {
-		// Name both engines, so that logs and version output make the
-		// dual-engine nature visible and either version can be grepped.
-		var m9, n9, p9 C.int
-		verstr += " + " + C.GoString(C.lmdbgo2_mdb_version(9, &m9, &n9, &p9))
-	}
+	// Name both engines, so that logs and version output make the
+	// dual-engine nature visible and either version can be grepped.
+	var m9, n9, p9 C.int
+	verstr += " + " + C.GoString(C.lmdbgo2_mdb_version(9, &m9, &n9, &p9))
 	return int(maj), int(min), int(pat), verstr
 }
 

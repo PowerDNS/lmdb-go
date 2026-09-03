@@ -984,9 +984,6 @@ func BenchmarkCursor_Renew(b *testing.B) {
 func TestCursor_Close_afterTxn(t *testing.T) {
 	for _, ver := range []Format{V09, V10} {
 		t.Run(ver.String(), func(t *testing.T) {
-			if ver == V10 && !v10Available {
-				t.Skip("LMDB 1.0 engine not available in this build")
-			}
 			env, err := NewEnv()
 			if err != nil {
 				t.Fatal(err)

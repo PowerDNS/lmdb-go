@@ -86,9 +86,6 @@ func TestEnv_SetFormat_invalid(t *testing.T) {
 // an existing database's format must fail with ErrFormatConflict, in both
 // directions.
 func TestEnv_versionConflict(t *testing.T) {
-	if !v10Available {
-		t.Skip("LMDB 1.0 engine not available in this build")
-	}
 	for _, tc := range []struct{ have, want Format }{
 		{V09, V10},
 		{V10, V09},
@@ -107,9 +104,6 @@ func TestEnv_versionConflict(t *testing.T) {
 // TestEnv_existingFormatWins: without an explicit request, an existing
 // database's format beats the process default.
 func TestEnv_existingFormatWins(t *testing.T) {
-	if !v10Available {
-		t.Skip("LMDB 1.0 engine not available in this build")
-	}
 	dir := t.TempDir()
 	createEnvFile(t, dir, V09, 0)
 
@@ -133,9 +127,6 @@ func TestEnv_existingFormatWins(t *testing.T) {
 }
 
 func TestSetDefaultFormat(t *testing.T) {
-	if !v10Available {
-		t.Skip("LMDB 1.0 engine not available in this build")
-	}
 	// Explicit setter beats the environment variable.
 	t.Setenv(DefaultFormatEnvVar, "09")
 	if err := SetDefaultFormat(V10); err != nil {
@@ -171,10 +162,6 @@ func TestSetDefaultFormat(t *testing.T) {
 // environment in the same process at the same time and reads/writes both -
 // the core capability that motivated bundling both engines.
 func TestEnv_crossFormatSimultaneous(t *testing.T) {
-	if !v10Available {
-		t.Skip("LMDB 1.0 engine not available in this build")
-	}
-
 	envs := map[Format]*Env{}
 	for _, ver := range []Format{V09, V10} {
 		env, err := testOpenVersioned(t, t.TempDir(), ver)
@@ -265,9 +252,6 @@ func TestEnv_PrevSnapshot(t *testing.T) {
 	}
 
 	t.Run("v10", func(t *testing.T) {
-		if !v10Available {
-			t.Skip("LMDB 1.0 engine not available in this build")
-		}
 		dir := t.TempDir()
 		env, err := testOpenVersioned(t, dir, V10)
 		if err != nil {

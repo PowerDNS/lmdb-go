@@ -5,27 +5,19 @@
 #include "lmdbgo.h"
 #include "_cgo_export.h"
 
-/* Declare both engines' renamed symbol sets against the canonical types.
- * On Windows only the 0.9 engine exists (LMDB 1.0 is broken there and its
- * tree carries a //go:build !windows constraint). */
+/* Declare both engines' renamed symbol sets against the canonical types. */
 #define LMDBGO_SYM(name) mdb09_##name
 #include "lmdbgo_dispatch.h"
 #undef LMDBGO_SYM
-#ifndef _WIN32
 #define LMDBGO_SYM(name) mdb10_##name
 #include "lmdbgo_dispatch.h"
 #undef LMDBGO_SYM
-#endif
 
 /* Engine dispatch: one predicted branch to a direct call. ver is 9 or 10,
  * copied from the Go Env/Txn/Cursor. Valid for void calls too (a conditional
  * operator with two void operands is void). */
-#ifdef _WIN32
-# define LMDBGO_DISPATCH(ver, name, ...) mdb09_##name(__VA_ARGS__)
-#else
-# define LMDBGO_DISPATCH(ver, name, ...) \
+#define LMDBGO_DISPATCH(ver, name, ...) \
     ((ver) >= 10 ? mdb10_##name(__VA_ARGS__) : mdb09_##name(__VA_ARGS__))
-#endif
 
 #define LMDBGO_SET_VAL(val, size, data) \
     *(val) = (MDB_val){.mv_size = (size), .mv_data = (data)}
@@ -193,12 +185,8 @@ MDB_dbi lmdbgo2_mdb_cursor_dbi(int ver, MDB_cursor *cursor) {
 /* Misc. */
 
 char *lmdbgo2_mdb_strerror(int err) {
-#ifdef _WIN32
-    return mdb09_strerror(err);
-#else
     /* The 1.0 table is a superset; shared codes have equivalent messages. */
     return mdb10_strerror(err);
-#endif
 }
 
 char *lmdbgo2_mdb_version(int ver, int *major, int *minor, int *patch) {

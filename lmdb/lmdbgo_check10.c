@@ -1,5 +1,3 @@
-//go:build !windows
-
 /* lmdbgo_check10.c
  *
  * Compile-time contract checks for the LMDB 1.0 stream. Defines no symbols.

@@ -15,9 +15,7 @@
 # shims that dispatch between the streams; this script does not touch them.
 #
 # The vendored .c files are byte-identical upstream sources except for:
-#   1. mechanically prepended lines:
-#        stream 10 only:  //go:build !windows   (LMDB 1.0 is broken on Windows)
-#        both streams:    #include "rename_lmdbNN.h"
+#   1. a mechanically prepended #include "rename_lmdbNN.h" line
 #   2. the patch series from lmdb/patches/lmdbNN/*.patch, applied in order
 #      (see lmdb/patches/README.md and PATCH-STATUS.md).
 #
@@ -65,11 +63,6 @@ src="$tmp_dir/openldap-LMDB_${version}/libraries/liblmdb"
 vendor_c() {
     local from="$1" to="$2"
     : > "$to"
-    if [ "$stream" = "10" ]; then
-        # LMDB 1.0 is broken on Windows upstream; the 0.9 engine is the only
-        # one available there. cgo honors build constraints in .c files.
-        printf '//go:build !windows\n\n' >> "$to"
-    fi
     printf '#include "rename_lmdb%s.h"\n\n' "$stream" >> "$to"
     cat "$from" >> "$to"
 }
@@ -99,11 +92,7 @@ fi
 # sources, so new/removed externs are picked up.
 scripts/gen-rename.sh "$stream"
 
-# Sanity: verify the prepended lines survived.
-if [ "$stream" = "10" ]; then
-    head -1 "lmdb/mdb_lmdb10.c" | grep -q '^//go:build !windows$' \
-        || { echo "ERROR: //go:build constraint missing from mdb_lmdb10.c" >&2; exit 1; }
-fi
+# Sanity: verify the prepended include survived.
 for f in "lmdb/mdb_lmdb${stream}.c" "lmdb/midl_lmdb${stream}.c"; do
     head -4 "$f" | grep -q "^#include \"rename_lmdb${stream}.h\"\$" \
         || { echo "ERROR: rename include missing from $f" >&2; exit 1; }

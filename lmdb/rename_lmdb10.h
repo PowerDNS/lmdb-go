@@ -79,6 +79,7 @@
 #define mdb_set_relfunc mdb10_set_relfunc
 #define mdb_stat mdb10_stat
 #define mdb_strerror mdb10_strerror
+#define mdb_tls_cbp mdb10_tls_cbp
 #define mdb_txn_abort mdb10_txn_abort
 #define mdb_txn_begin mdb10_txn_begin
 #define mdb_txn_commit mdb10_txn_commit

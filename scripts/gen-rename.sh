@@ -13,6 +13,11 @@
 # defined global that does not start with mdb_ is an error: it could not be
 # renamed by this scheme and would leak into the global namespace.
 #
+# Globals that only exist in Windows builds (#ifdef _WIN32) are invisible to
+# a compile on the unix host, so they come from an explicit win_syms list.
+# When a mingw-w64 cross compiler is installed, that list is verified against
+# a real Windows compile; otherwise it is trusted as-is.
+#
 # Usage: scripts/gen-rename.sh <09|10>
 # Reads:  lmdb/{mdb,midl}_lmdbNN.c (prepended lines are stripped),
 #         lmdb/{lmdb,midl}_lmdbNN.h
@@ -72,6 +77,34 @@ syms="$(nm -g "$tmp/mdb.o" "$tmp/midl.o" 2>/dev/null \
     | sort -u)"
 
 [ -n "$syms" ] || { echo "ERROR: no global symbols found" >&2; exit 1; }
+
+# Windows-only extern globals (see the header comment). mdb_tls_cbp is the
+# TLS-callback registration both engines define under #ifdef _WIN32.
+win_syms="mdb_tls_cbp"
+
+mingw_cc="x86_64-w64-mingw32-gcc"
+mingw_nm="x86_64-w64-mingw32-nm"
+if command -v "$mingw_cc" >/dev/null && command -v "$mingw_nm" >/dev/null; then
+    "$mingw_cc" -c -O0 -w -o "$tmp/mdb-win.o" "$tmp/mdb.c"
+    "$mingw_cc" -c -O0 -w -o "$tmp/midl-win.o" "$tmp/midl.c"
+    # .refptr.* are mingw-generated comdat stubs that follow their target
+    # symbol's (renamed) name automatically; they never need renaming.
+    actual_win="$("$mingw_nm" -g "$tmp/mdb-win.o" "$tmp/midl-win.o" 2>/dev/null \
+        | awk 'NF >= 3 && $2 != "U" && $3 !~ /^\./ { print $3 }' \
+        | sort -u)"
+    uncovered="$(comm -23 <(printf '%s\n' "$actual_win") \
+        <(printf '%s\n' "$syms" "$win_syms" | sort -u))"
+    if [ -n "$uncovered" ]; then
+        echo "ERROR: Windows build defines globals not covered by the rename list:" >&2
+        printf '%s\n' "$uncovered" >&2
+        echo "Add them to win_syms in $0." >&2
+        exit 1
+    fi
+else
+    echo "NOTE: no mingw-w64 cross compiler found; trusting win_syms as-is."
+fi
+
+syms="$(printf '%s\n' "$syms" "$win_syms" | sort -u)"
 
 bad="$(printf '%s\n' "$syms" | grep -v '^mdb_' || true)"
 if [ -n "$bad" ]; then

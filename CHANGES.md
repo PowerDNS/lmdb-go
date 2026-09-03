@@ -83,9 +83,8 @@ binary. v1 continues on its own branch with `v1.x.y` releases.
 * With two bundled engines there is no single "the LMDB version", so
   package `Version`/`VersionString` report the newest bundled engine —
   numerically 1.0.x, matching the canonical header surface the bindings are
-  compiled against — with a release string naming both engines (only 0.9 on
-  Windows). Use `Env.EngineVersion` for the engine driving a specific
-  environment.
+  compiled against — with a release string naming both engines. Use
+  `Env.EngineVersion` for the engine driving a specific environment.
 * `Txn.OpenDBI("")` fails with `BadValSize` on the 0.9 engine but `NotFound`
   on 1.0. `Env.MaxKeySize` is engine-dependent post-open (511 on 0.9; the
   1.0 engine derives it from the page size, 8122 for 4K pages) and 511
@@ -94,9 +93,7 @@ binary. v1 continues on its own branch with `v1.x.y` releases.
   instead of `syscall.Errno`; error strings come from the 1.0 table.
 * Like v1, v2 only supports statically linking the bundled LMDB sources;
   dynamic linking against a system liblmdb is not supported and is not
-  planned for v2. Windows builds contain only the 0.9 engine (upstream
-  LMDB 1.0 is broken on Windows); requesting `V10` there fails with a
-  clear error.
+  planned for v2.
 * Go 1.21 or newer is required.
 * The vendored 0.9 stream was upgraded 0.9.33 → 0.9.35 (see
   `CHANGES.lmdb09.txt`); LMDB 1.0.1 is vendored as the new 10 stream (see

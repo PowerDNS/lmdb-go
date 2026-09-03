@@ -76,11 +76,7 @@ var defaultVersion atomic.Int32
 // tools ship, databases created in the 0.9 format stay readable by them.
 func SetDefaultFormat(v Format) error {
 	switch v {
-	case FormatUnknown, V09:
-	case V10:
-		if !v10Available {
-			return errV10Unavailable
-		}
+	case FormatUnknown, V09, V10:
 	default:
 		return ErrInvalidFormat
 	}
@@ -96,9 +92,7 @@ func defaultFormat() Format {
 	}
 	switch os.Getenv(DefaultFormatEnvVar) {
 	case "10", "1.0":
-		if v10Available {
-			return V10
-		}
+		return V10
 	case "09", "9", "0.9":
 		return V09
 	}
@@ -127,11 +121,7 @@ func (v EnvVersion) String() string { return v.Release }
 // Passing FormatUnknown clears the request.
 func (env *Env) SetFormat(v Format) error {
 	switch v {
-	case FormatUnknown, V09:
-	case V10:
-		if !v10Available {
-			return errV10Unavailable
-		}
+	case FormatUnknown, V09, V10:
 	default:
 		return ErrInvalidFormat
 	}

@@ -107,9 +107,6 @@ Things to be aware of:
   release string naming both. Use `env.EngineVersion()` for the engine driving
   a specific environment. `env.MaxKeySize()` also depends on the engine: 511
   bytes on 0.9, and derived from the page size on 1.0 (8122 for 4K pages).
-- **Windows builds contain only the 0.9 engine**, because upstream LMDB 1.0
-  is currently broken there. Requesting the 1.0 format fails with a clear
-  error.
 - The `lmdb_stat` and `lmdb_copy` commands in [cmd/](cmd/) work with
   databases of either format.
 

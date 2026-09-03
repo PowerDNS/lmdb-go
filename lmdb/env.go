@@ -174,10 +174,6 @@ func (env *Env) Open(path string, flags uint, mode os.FileMode) error {
 	default:
 		ver = defaultFormat()
 	}
-	if ver == V10 && !v10Available {
-		return errV10Unavailable
-	}
-
 	env.ver = C.int(ver)
 	ret := C.lmdbgo2_mdb_env_create(env.ver, &env._env)
 	if ret != success {

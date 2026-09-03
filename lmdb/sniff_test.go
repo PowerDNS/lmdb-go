@@ -50,9 +50,6 @@ func TestSniffFormat_v09(t *testing.T) {
 }
 
 func TestSniffFormat_v10(t *testing.T) {
-	if !v10Available {
-		t.Skip("LMDB 1.0 engine not available in this build")
-	}
 	dir := t.TempDir()
 	createEnvFile(t, dir, V10, 0)
 	ver, err := SniffFormat(dir, 0)

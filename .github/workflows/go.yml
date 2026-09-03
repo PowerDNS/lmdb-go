@@ -64,7 +64,7 @@ jobs:
 
   windows-build:
     runs-on: ubuntu-22.04
-    name: Windows cross-build (0.9 engine only)
+    name: Windows cross-build
     steps:
     - uses: actions/checkout@v3
     - name: Set up Go
@@ -73,8 +73,26 @@ jobs:
         go-version: '1.x'
     - name: Install mingw
       run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
-    # LMDB 1.0 is broken on Windows upstream; the 1.0 tree carries
-    # //go:build !windows and the dispatch layer collapses to the 0.9
-    # engine. This build proves that the tagging keeps Windows compiling.
+    # Catches Windows compile and link breakage cheaply on every push;
+    # the windows-test job runs the actual suite.
     - name: Cross-build for windows/amd64
       run: CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build ./...
+
+  windows-test:
+    runs-on: windows-2022
+    name: Windows tests
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.x'
+    # cgo needs a C compiler; the runner image ships mingw-w64 gcc on PATH.
+    # Mirrors the Makefile "test" target: the full suite once per engine,
+    # selected via the process-wide default format.
+    - name: Test (0.9 default)
+      run: go test ./...
+    - name: Test (1.0 default)
+      run: go test -count=1 ./...
+      env:
+        LMDBGO_DEFAULT_FORMAT: "10"

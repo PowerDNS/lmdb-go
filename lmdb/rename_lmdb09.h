@@ -65,6 +65,7 @@
 #define mdb_set_relfunc mdb09_set_relfunc
 #define mdb_stat mdb09_stat
 #define mdb_strerror mdb09_strerror
+#define mdb_tls_cbp mdb09_tls_cbp
 #define mdb_txn_abort mdb09_txn_abort
 #define mdb_txn_begin mdb09_txn_begin
 #define mdb_txn_commit mdb09_txn_commit

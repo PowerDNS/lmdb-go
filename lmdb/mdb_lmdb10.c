@@ -1,5 +1,3 @@
-//go:build !windows
-
 #include "rename_lmdb10.h"
 
 /** @file mdb.c
