@@ -1,11 +1,10 @@
 package lmdbsync
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/PowerDNS/lmdb-go/internal/lmdbtest"
 	"github.com/PowerDNS/lmdb-go/lmdb"
@@ -59,7 +58,6 @@ type passthroughHandler struct{}
 
 func (*passthroughHandler) HandleTxnErr(ctx context.Context, env *Env, err error) (context.Context, error) {
 	return ctx, err
-
 }
 
 func TestMapFullHandler(t *testing.T) {

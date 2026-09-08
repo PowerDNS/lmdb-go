@@ -371,12 +371,14 @@ func (txn *Txn) Stat(dbi DBI) (*Stat, error) {
 	if ret != success {
 		return nil, operrno("mdb_stat", ret)
 	}
-	stat := Stat{PSize: uint(_stat.ms_psize),
+	stat := Stat{
+		PSize:         uint(_stat.ms_psize),
 		Depth:         uint(_stat.ms_depth),
 		BranchPages:   uint64(_stat.ms_branch_pages),
 		LeafPages:     uint64(_stat.ms_leaf_pages),
 		OverflowPages: uint64(_stat.ms_overflow_pages),
-		Entries:       uint64(_stat.ms_entries)}
+		Entries:       uint64(_stat.ms_entries),
+	}
 	return &stat, nil
 }
 

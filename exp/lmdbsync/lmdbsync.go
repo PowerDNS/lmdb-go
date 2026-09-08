@@ -106,12 +106,11 @@ See mdb_env_open and MDB_NOLOCK.
 package lmdbsync
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/PowerDNS/lmdb-go/lmdb"
 )
@@ -261,6 +260,7 @@ func (r *Env) runHandler(readonly bool, fn func() error, h Handler) error {
 		}
 	}
 }
+
 func (r *Env) run(readonly bool, fn func() error) error {
 	var err error
 	if r.noLock && !readonly {

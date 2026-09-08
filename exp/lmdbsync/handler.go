@@ -1,12 +1,11 @@
 package lmdbsync
 
 import (
+	"context"
 	"errors"
 	"math"
 	"math/rand"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/PowerDNS/lmdb-go/lmdb"
 )
