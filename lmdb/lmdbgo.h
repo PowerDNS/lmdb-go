@@ -15,7 +15,7 @@
  * problem and the decision.
  *      https://github.com/golang/go/issues/14387
  *      https://github.com/golang/go/issues/15048
- *      https://github.com/PowerDNS/lmdb-go/issues/63
+ *      https://github.com/bmatsuo/lmdb-go/issues/63
  * */
 int lmdbgo_mdb_del(MDB_txn *txn, MDB_dbi dbi, char *kdata, size_t kn, char *vdata, size_t vn);
 int lmdbgo_mdb_get(MDB_txn *txn, MDB_dbi dbi, char *kdata, size_t kn, MDB_val *val);
