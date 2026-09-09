@@ -1,8 +1,39 @@
 # Release Change Log
 
+## v1.9.4 (2026-09-09)
+
+### What's Changed
+* Update changelog for 1.9.3 by @wojas in https://github.com/PowerDNS/lmdb-go/pull/39
+* Upgrade upstream LMDB to 0.9.35 by @wojas in https://github.com/PowerDNS/lmdb-go/pull/43
+* use standard library context by @Luit in https://github.com/PowerDNS/lmdb-go/pull/46
+* fix update-lmdb.sh by @Luit in https://github.com/PowerDNS/lmdb-go/pull/48
+
+LMDB C library changes:
+
+    LMDB 0.9.35 Release (2026/01/27)
+    	ITS#10434 - Fix typo affecting Mac OSX
+
+    LMDB 0.9.34 Release (2026/01/26)
+    	ITS#9564 - fix race condition freeing spilled pages at end of transaction
+    	ITS#10222 - Update mdb_dump(1) and mdb_load(1) man pages for append (-a) option
+    	ITS#10275 - mdb_load: add -Q option to use NOSYNC
+    	ITS#10296 - fix fdatasync on MacOS
+    	ITS#10342 - fix memleak in mdb_txn_begin for nested txns
+    	ITS#10346 - fix mdb_env_copy2 with values > (2GB-16)
+    	ITS#10355 - fix mplay build on musl
+    	ITS#10396 - fix mdb_cursor_del0 with multiple DUPSORT cursors
+    	ITS#10419 - add support for NetBSD
+    	ITS#10420 - add support for Haiku
+    	ITS#10421 - mdb_load: check for malicious input
+
+### New Contributors
+* @Luit made their first contribution in https://github.com/PowerDNS/lmdb-go/pull/46
+
+**Full Changelog**: https://github.com/PowerDNS/lmdb-go/compare/v1.9.3...v1.9.4
+
 ## v1.9.3 (2025-01-02)
 
-## What's Changed
+### What's Changed
 
 * Upgrade LMDB to 0.9.33 & use official OpenLDAP repo as source for updates by @wojas in https://github.com/PowerDNS/lmdb-go/pull/35
 * macOS: fix unknown warning -Wno-stringop-overflow by @wojas in https://github.com/PowerDNS/lmdb-go/pull/38
@@ -28,7 +59,7 @@ LMDB C library changes:
 
 ## v1.9.2 (2023-12-07)
 
-## What's Changed
+### What's Changed
 * Fix: allocate C memory for MDB_val in readonly Txn by @wojas in https://github.com/PowerDNS/lmdb-go/pull/29
 * Disable memcpy() overflow warnings in C compilation by @shane-ns1 in https://github.com/PowerDNS/lmdb-go/pull/19
 * Replace reflect.SliceHeader with unsafe.Slice by @shane-ns1 in https://github.com/PowerDNS/lmdb-go/pull/21
@@ -36,7 +67,7 @@ LMDB C library changes:
 * Fix file mode in Open() statement by @shane-ns1 in https://github.com/PowerDNS/lmdb-go/pull/24
 * Fix issues reported by staticcheck in tests by @shane-ns1 in https://github.com/PowerDNS/lmdb-go/pull/26
 
-## New Contributors
+### New Contributors
 * @shane-ns1 made their first contribution in https://github.com/PowerDNS/lmdb-go/pull/19
 * @fiatjaf reported https://github.com/PowerDNS/lmdb-go/issues/28
 
