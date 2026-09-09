@@ -18,10 +18,10 @@ jobs:
     strategy:
       matrix:
         go:
-          - '1.22'
-          - '1.23'
+          - '1.25'
+          - '1.26'
           - '1.x'
-        
+
     name: Go ${{ matrix.go }} tests
     steps:
     - uses: actions/checkout@v3
@@ -35,4 +35,3 @@ jobs:
       run: go install golang.org/x/tools/cmd/goimports@latest
     - name: Build and test
       run: make all
-
