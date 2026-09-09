@@ -123,6 +123,34 @@ the runtime's thread locking implementation.  In such situations updates
 desired by the goroutine in question must be proxied by a goroutine with a
 known state (i.e.  "locked" or "unlocked").  See the included examples for more
 details about dealing with such situations.
+
+# Comparison Functions
+
+By default stores keys (and values for duplicate keys) sorted lexigraphically
+(e.g. using bytes.Compare).  LMDB allows applications specifying custom
+comparison functions for each database.  There is limited support of this
+feature for Go applications.
+
+Each database can use a custom comparison function.  The package only supports
+comparison functions that are static C functions.  Pass a function pointer, as
+type lmdb.CmpFunc to the SetCmp method in an Update transaction.
+
+	dbi, err := txn.OpenDBI("mydb", 0)
+	cmp := (*lmdb.CmpFunc)(unsafe.Pointer(C.my_comparison_func))
+	err = txn.SetCmp(dbi, cmp)
+
+Make sure to check all errors returned by transaction methods.
+
+For databases allowing duplicate keys (using DupSort) the comparison function
+for values can be defined similarly using the SetCmpDup method.
+
+	dbi, err := txn.OpenDBI("mydb", lmdb.DupSort)
+	cmp := (*lmdb.CmpFunc)(unsafe.Pointer(C.my_dupsort_comparison_func))
+	err = txn.SetCmpDup(dbi, cmp)
+
+The lmdb-go project provides a complete example of an application using custom
+comparison functions in the command
+github.com/bmatsuo/lmdb-go/exp/cmd/lmdb_cmp_simple.
 */
 package lmdb
 
