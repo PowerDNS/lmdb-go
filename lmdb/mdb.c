@@ -264,6 +264,16 @@ typedef SSIZE_T	ssize_t;
 #define MDB_DEVEL 0
 #endif
 
+	/** Save the pages a transaction frees in freeDB records of at most
+	 *	one page each, instead of one record which needs a contiguous
+	 *	overflow run, see mdb_freelist_save().  Environments written
+	 *	with this option remain readable and writable by builds
+	 *	without it.
+	 */
+#ifndef MDB_SPLIT_FREELIST
+#define MDB_SPLIT_FREELIST 0
+#endif
+
 	/** Wrapper around __func__, which is a C99 feature */
 #if __STDC_VERSION__ >= 199901L
 # define mdb_func_	__func__
@@ -1214,6 +1224,10 @@ struct MDB_txn {
 #define MDB_TXN_DIRTY		0x04		/**< must write, even if dirty list is empty */
 #define MDB_TXN_SPILLS		0x08		/**< txn or a parent has spilled pages */
 #define MDB_TXN_HAS_CHILD	0x10		/**< txn has an #MDB_txn.%mt_child */
+#if MDB_SPLIT_FREELIST
+#define MDB_TXN_SPLIT		0x20		/**< split the freelist, see mdb_freelist_save() */
+#define MDB_TXN_SPLITSYNC	0x40		/**< did split it: sync meta write, see mdb_env_write_meta() */
+#endif
 	/** most operations on the txn are currently illegal */
 #define MDB_TXN_BLOCKED		(MDB_TXN_FINISHED|MDB_TXN_ERROR|MDB_TXN_HAS_CHILD)
 /** @} */
@@ -1224,6 +1238,9 @@ struct MDB_txn {
 	 *	dirty_list into mt_parent after freeing hidden mt_parent pages.
 	 */
 	unsigned int	mt_dirty_room;
+#if MDB_SPLIT_FREELIST
+	txnid_t		*mt_commit_txnid;	/**< set by mdb_txn_set_commit_txnid() */
+#endif
 };
 
 /** Enough space for 2^32 nodes with minimum of 2 keys per node. I.e., plenty.
@@ -1381,6 +1398,9 @@ struct MDB_env {
 #endif
 	void		*me_userctx;	 /**< User-settable context */
 	MDB_assert_func *me_assert_func; /**< Callback for assertion failures */
+#if MDB_SPLIT_FREELIST
+	int		me_split_freelist; /**< #mdb_env_set_split_freelist() */
+#endif
 };
 
 	/** Nested transaction */
@@ -2868,6 +2888,11 @@ mdb_txn_renew0(MDB_txn *txn)
 	txn->mt_next_pgno = meta->mm_last_pg+1;
 
 	txn->mt_flags = flags;
+#if MDB_SPLIT_FREELIST
+	if (env->me_split_freelist && !(flags & MDB_TXN_RDONLY))
+		txn->mt_flags |= MDB_TXN_SPLIT;
+	txn->mt_commit_txnid = NULL;
+#endif
 
 	/* Setup db info */
 	txn->mt_numdbs = env->me_numdbs;
@@ -2968,6 +2993,9 @@ mdb_txn_begin(MDB_env *env, MDB_txn *parent, unsigned int flags, MDB_txn **ret)
 		txn->mt_spill_pgs = NULL;
 		txn->mt_next_pgno = parent->mt_next_pgno;
 		parent->mt_flags |= MDB_TXN_HAS_CHILD;
+#if MDB_SPLIT_FREELIST
+		txn->mt_commit_txnid = NULL;
+#endif
 		parent->mt_child = txn;
 		txn->mt_parent = parent;
 		txn->mt_numdbs = parent->mt_numdbs;
@@ -3162,6 +3190,43 @@ mdb_txn_abort(MDB_txn *txn)
 	_mdb_txn_abort(txn);
 }
 
+#if MDB_SPLIT_FREELIST
+/* With MDB_SPLIT_FREELIST, for an env which enabled it with
+ * mdb_env_set_split_freelist() (MDB_TXN_SPLIT), mdb_freelist_save()
+ * saves the pages freed by this txn in records of at most me_maxfree_1pg
+ * pages each, i.e. one overflow page, instead of one record which would
+ * need a contiguous overflow run of 8 bytes per freed page.  Nothing
+ * changes while one record suffices, or if the ids below would get near
+ * the end of the txnid range.  Otherwise the n records get the
+ * consecutive keys mt_txnid..mt_txnid+n-1 and the txn commits as txnid
+ * newid = mt_txnid + (n & ~1), the first txnid at or above the last key
+ * with the parity of mt_txnid:
+ * - The keys are unique: they are above me_pglast, the top of the range
+ *   used for the me_pghead records, and no later txn uses a txnid below
+ *   newid+1.  Txnids only need to increase; key newid has no record if
+ *   n is even.
+ * - mdb_page_alloc() reclaims a record once its key is below the oldest
+ *   reader and below the committing txnid.  All keys are >= mt_txnid,
+ *   so readers of older snapshots, which may still use the pages, keep
+ *   all of them.  The next writer, newid+1, may reclaim all but the
+ *   record under newid.  That is safe once meta page newid is durable:
+ *   recovery takes the newer valid meta page, so from then on the
+ *   snapshot before this txn, which uses the freed pages, cannot be
+ *   chosen any more.  So the meta page is written synchronously like
+ *   in the default mode (MDB_TXN_SPLITSYNC, see mdb_env_write_meta()),
+ *   and no writer, not even one taking over after this process dies,
+ *   can see txnid newid before it is on disk, with the one exception
+ *   that mode has on macOS.  With one record the txnid-1 limit covers
+ *   this until the next commit's sync, as always.
+ * - newid has the parity of mt_txnid, so mdb_env_write_meta() puts it
+ *   in the meta page which the previous commit did not use, and that
+ *   commit's snapshot stays intact until newid is durable.
+ *   mdb_txn_renew0() reads the meta page and the next txnid from the
+ *   committed one.
+ * - mt_txnid is updated last, so mdb_find_oldest() limits reclaim to
+ *   records below the original mt_txnid-1 while we allocate.
+ */
+#endif
 /** Save the freelist as of this transaction to the freeDB.
  * This changes the freelist. Keep trying until it stabilizes.
  */
@@ -3178,6 +3243,9 @@ mdb_freelist_save(MDB_txn *txn)
 	txnid_t	pglast = 0, head_id = 0;
 	pgno_t	freecnt = 0, *free_pgs, *mop;
 	ssize_t	head_room = 0, total_room = 0, mop_len, clean_limit;
+#if MDB_SPLIT_FREELIST
+	txnid_t	newid = txn->mt_txnid, n = 0;
+#endif
 
 	mdb_cursor_init(&mc, txn, FREE_DBI, NULL);
 
@@ -3257,6 +3325,68 @@ mdb_freelist_save(MDB_txn *txn)
 				return rc;
 		}
 
+#if MDB_SPLIT_FREELIST
+		if ((txn->mt_flags & MDB_TXN_SPLIT) && !freecnt && txn->mt_free_pgs[0]) {
+			/* Touch the last page of freeDB before deciding below: the
+			 * pages it frees may make the single record too big.
+			 */
+			rc = mdb_page_search(&mc, NULL, MDB_PS_LAST|MDB_PS_MODIFY);
+			if (rc && rc != MDB_NOTFOUND)
+				return rc;
+		}
+		/* Save the IDL of pages freed by this txn, in records of at
+		 * most maxfree_1pg pages with keys from mt_txnid, see above.
+		 * Only if the env asked for it, more than one record is needed
+		 * and the ids up to the next writer's stay below the reader
+		 * slot sentinel (txnid_t)-1, else the single record below as
+		 * always.  Also redo that record if it grew past one page
+		 * while being written, before anything was split.
+		 */
+		n = (txn->mt_free_pgs[0] + maxfree_1pg - 1) / maxfree_1pg;
+		if ((txn->mt_flags & MDB_TXN_SPLIT) && n > 1 &&
+			txn->mt_txnid <= (txnid_t)-2 - n &&
+			(freecnt < txn->mt_free_pgs[0] || newid == txn->mt_txnid)) {
+			txnid_t id;
+			ssize_t len;
+
+			free_pgs = txn->mt_free_pgs;
+			freecnt = free_pgs[0];
+			mdb_midl_sort(free_pgs);
+			n = (freecnt + maxfree_1pg - 1) / maxfree_1pg;
+			newid = txn->mt_txnid + (n & ~1);
+			key.mv_size = sizeof(id);
+			key.mv_data = &id;
+			/* Write to last pages of freeDB. Full records first so a
+			 * retry rewrites them in place, only the last one grows.
+			 * Lowest page numbers under the lowest key: that record is
+			 * read first and mdb_page_alloc() prefers low pages.
+			 */
+			for (id = txn->mt_txnid, j = freecnt; j > 0; j -= len, id++) {
+				len = j > maxfree_1pg ? maxfree_1pg : j;
+				data.mv_size = (len + 1) * sizeof(pgno_t);
+				rc = _mdb_cursor_put(&mc, &key, &data, MDB_RESERVE);
+				if (rc)
+					return rc;
+				/* mt_free_pgs[] may have grown or moved during the
+				 * Put(), but its first freecnt entries did not change.
+				 * If it grew, we come back and rewrite all records.
+				 */
+				pgs = (pgno_t *)data.mv_data;
+				pgs[0] = len;
+				memcpy(pgs+1, txn->mt_free_pgs + (j-len+1), len * sizeof(pgno_t));
+#if (MDB_DEBUG) > 1
+				{
+					unsigned int i = len;
+					DPRINTF(("IDL write txn %"Z"u root %"Z"u num %u",
+						id, txn->mt_dbs[FREE_DBI].md_root, i));
+					for (; i; i--)
+						DPRINTF(("IDL %"Z"u", pgs[i]));
+				}
+#endif
+			}
+			continue;
+		}
+#endif
 		/* Save the IDL of pages freed by this txn, to a single record */
 		if (freecnt < txn->mt_free_pgs[0]) {
 			if (!freecnt) {
@@ -3382,6 +3512,15 @@ mdb_freelist_save(MDB_txn *txn)
 				break;
 		}
 	}
+#if MDB_SPLIT_FREELIST
+	/* Nothing allocates from the freeDB any more: commit as newid */
+	if (newid != txn->mt_txnid) {
+		DPRINTF(("txn %"Z"u freed %"Z"u pages in %"Z"u records, commits as txn %"Z"u",
+			txn->mt_txnid, freecnt, n, newid));
+		txn->mt_txnid = newid;
+		txn->mt_flags |= MDB_TXN_SPLITSYNC;
+	}
+#endif
 	return rc;
 }
 
@@ -3718,6 +3857,11 @@ _mdb_txn_commit(MDB_txn *txn)
 
 		parent->mt_child = NULL;
 		mdb_midl_free(((MDB_ntxn *)txn)->mnt_pgstate.mf_pghead);
+#if MDB_SPLIT_FREELIST
+		/* Nothing of this is in the env yet: the parent's txnid */
+		if (txn->mt_commit_txnid && rc == MDB_SUCCESS)
+			*txn->mt_commit_txnid = txn->mt_txnid;
+#endif
 		free(txn);
 		return rc;
 	}
@@ -3779,6 +3923,18 @@ _mdb_txn_commit(MDB_txn *txn)
 	end_mode = MDB_END_COMMITTED|MDB_END_UPDATE;
 
 done:
+#if MDB_SPLIT_FREELIST
+	/* The outcome txnid, still under the writer mutex: ours, or the
+	 * previous one if nothing was written.  Read txns report their
+	 * snapshot.
+	 */
+	if (txn->mt_commit_txnid) {
+		*txn->mt_commit_txnid = txn->mt_txnid;
+		if ((end_mode & MDB_END_OPMASK) == MDB_END_EMPTY_COMMIT &&
+			!F_ISSET(txn->mt_flags, MDB_TXN_RDONLY))
+			(*txn->mt_commit_txnid)--;
+	}
+#endif
 	mdb_txn_end(txn, end_mode);
 	return MDB_SUCCESS;
 
@@ -3793,6 +3949,20 @@ mdb_txn_commit(MDB_txn *txn)
 	MDB_TRACE(("%p", txn));
 	return _mdb_txn_commit(txn);
 }
+
+#if MDB_SPLIT_FREELIST
+int
+mdb_txn_set_commit_txnid(MDB_txn *txn, size_t *txnid)
+{
+	MDB_TRACE(("%p, %p", txn, (void *)txnid));
+	if (!txn)
+		return EINVAL;
+	if (txn->mt_flags & MDB_TXN_BLOCKED)
+		return MDB_BAD_TXN;
+	txn->mt_commit_txnid = txnid;
+	return MDB_SUCCESS;
+}
+#endif
 
 /** Read the environment parameters of a DB environment before
  * mapping it into memory.
@@ -3954,6 +4124,26 @@ mdb_env_write_meta(MDB_txn *txn)
 
 	env = txn->mt_env;
 	flags = env->me_flags;
+#if MDB_SPLIT_FREELIST
+	/* A commit which split its freelist (see mdb_freelist_save()): no
+	 * other writer may see this meta page before it is on disk, even
+	 * if this process dies right after the write.  So write it as the
+	 * default mode does, with a synchronous pwrite() to me_mfd, instead
+	 * of a store into the map or a write to be synced later.  Where
+	 * the O_DSYNC descriptor is durable (Linux) that publishes and
+	 * persists the page in one system call; on macOS the F_FULLFSYNC
+	 * below follows it, the window every meta write of the default
+	 * mode has there.  me_mfd is open for this with MDB_WRITEMAP too;
+	 * a pwrite() is coherent with the mapping, as every write without
+	 * MDB_WRITEMAP relies on.  A failed write is handled below as
+	 * always: old data restored, nothing published.  MDB_NOSYNC, and
+	 * MDB_MAPASYNC with MDB_WRITEMAP, promise no durability and stay
+	 * as they are.
+	 */
+	if ((txn->mt_flags & MDB_TXN_SPLITSYNC) && !(flags & MDB_NOSYNC) &&
+		(flags & (MDB_WRITEMAP|MDB_MAPASYNC)) != (MDB_WRITEMAP|MDB_MAPASYNC))
+		flags &= ~(MDB_WRITEMAP|MDB_NOMETASYNC);
+#endif
 	mp = env->me_metas[toggle];
 	mapsize = env->me_metas[toggle ^ 1]->mm_mapsize;
 	/* Persist any increases of mapsize config */
@@ -5163,6 +5353,16 @@ mdb_env_open(MDB_env *env, const char *path, unsigned int flags, mdb_mode_t mode
 			if (rc)
 				goto leave;
 		}
+#if MDB_SPLIT_FREELIST
+		if ((flags & (MDB_RDONLY|MDB_WRITEMAP)) == MDB_WRITEMAP) {
+			/* Also with MDB_WRITEMAP: a commit which split its freelist
+			 * writes its meta page through it, see mdb_env_write_meta().
+			 */
+			rc = mdb_fopen(env, &fname, MDB_O_META, mode, &env->me_mfd);
+			if (rc)
+				goto leave;
+		}
+#endif
 		DPRINTF(("opened dbenv %p", (void *) env));
 		if (excl > 0) {
 			rc = mdb_env_share_locks(env, &excl);
@@ -9857,6 +10057,17 @@ mdb_env_set_assert(MDB_env *env, MDB_assert_func *func)
 #endif
 	return MDB_SUCCESS;
 }
+
+#if MDB_SPLIT_FREELIST
+int ESECT
+mdb_env_set_split_freelist(MDB_env *env, int onoff)
+{
+	if (!env)
+		return EINVAL;
+	env->me_split_freelist = onoff != 0;
+	return MDB_SUCCESS;
+}
+#endif
 
 int ESECT
 mdb_env_get_path(MDB_env *env, const char **arg)

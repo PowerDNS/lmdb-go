@@ -768,6 +768,39 @@ void mdb_env_close(MDB_env *env);
 	 */
 int  mdb_env_set_flags(MDB_env *env, unsigned int flags, int onoff);
 
+#if MDB_SPLIT_FREELIST
+	/** @brief Enable or disable splitting big freelist records.
+	 *
+	 * Only available if liblmdb and the application are compiled with
+	 * -DMDB_SPLIT_FREELIST=1.  By default, and when disabled, the pages
+	 * a write transaction frees are saved in one record of the freelist
+	 * DB, which needs a contiguous run of overflow pages when there are
+	 * many of them, so a transaction which only deleted data can fail
+	 * with #MDB_MAP_FULL.  When enabled, write transactions begun
+	 * afterwards through this handle save them in records of at most
+	 * one page each if more than one is needed.  Such a transaction
+	 * commits under a transaction ID which may be higher than the
+	 * #mdb_txn_id() reported inside it; #mdb_txn_set_commit_txnid()
+	 * tells the ID it ended up with.  It writes its meta page
+	 * synchronously, also with #MDB_WRITEMAP or #MDB_NOMETASYNC, which
+	 * is the one extra cost; #MDB_NOSYNC, and #MDB_MAPASYNC with
+	 * #MDB_WRITEMAP, are not affected.  A build with this option keeps
+	 * a second file descriptor open for #MDB_WRITEMAP environments for
+	 * this, whether or not splitting is enabled.
+	 * The setting is not stored in the environment; it may be changed
+	 * before or after #mdb_env_open().  Environments written with it
+	 * remain readable and writable by builds without this option.
+	 * @param[in] env An environment handle returned by #mdb_env_create()
+	 * @param[in] onoff A non-zero value enables, zero disables
+	 * @return A non-zero error value on failure and 0 on success. Some possible
+	 * errors are:
+	 * <ul>
+	 *	<li>EINVAL - an invalid parameter was specified.
+	 * </ul>
+	 */
+int  mdb_env_set_split_freelist(MDB_env *env, int onoff);
+#endif
+
 	/** @brief Get environment flags.
 	 *
 	 * @param[in] env An environment handle returned by #mdb_env_create()
@@ -1006,6 +1039,46 @@ size_t mdb_txn_id(MDB_txn *txn);
 	 * </ul>
 	 */
 int  mdb_txn_commit(MDB_txn *txn);
+
+#if MDB_SPLIT_FREELIST
+	/** @brief Register where #mdb_txn_commit() stores the transaction's
+	 * outcome ID.
+	 *
+	 * Only available if compiled with -DMDB_SPLIT_FREELIST=1.  After a
+	 * successful #mdb_txn_commit() of the transaction, \b *txnid holds:
+	 * <ul>
+	 *	<li>for a write transaction with changes: the ID it was committed
+	 *	as, taken before the writer lock is released, so it is the last
+	 *	committed ID at that point.  With #mdb_env_set_split_freelist()
+	 *	it may be higher than the #mdb_txn_id() of the open transaction.
+	 *	<li>for a write transaction with nothing to commit: the previously
+	 *	committed ID, nothing is written.
+	 *	<li>for a nested transaction: the ID of its parent, whose commit
+	 *	is still pending.
+	 *	<li>for a read-only transaction: the ID of its snapshot.
+	 * </ul>
+	 * Nothing is stored if the transaction is aborted or the commit
+	 * fails.  The registration lasts until the transaction ends;
+	 * #mdb_txn_begin() and #mdb_txn_renew() start without one.  The
+	 * memory must remain valid, at the same address, from this call
+	 * until the transaction has been committed or aborted.  Passing
+	 * NULL removes the registration.  Neither the transaction handle
+	 * after #mdb_txn_commit() returns, which is gone by then, nor the
+	 * environment's last transaction ID, which another process or
+	 * another thread may have advanced in the meantime, can provide
+	 * this value.
+	 * @param[in] txn A transaction handle returned by #mdb_txn_begin()
+	 * @param[in] txnid Address where the ID will be stored, or NULL
+	 * @return A non-zero error value on failure and 0 on success. Some possible
+	 * errors are:
+	 * <ul>
+	 *	<li>EINVAL - an invalid parameter was specified.
+	 *	<li>#MDB_BAD_TXN - the transaction has finished, has a child, or
+	 *	must abort.
+	 * </ul>
+	 */
+int  mdb_txn_set_commit_txnid(MDB_txn *txn, size_t *txnid);
+#endif
 
 	/** @brief Abandon all the operations of the transaction instead of saving them.
 	 *
