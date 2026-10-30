@@ -63,6 +63,12 @@ type Txn struct {
 	// reset/renewed
 	id uintptr
 
+	// commitID is the ID LMDB reports when a write transaction is committed,
+	// see CommitID.  LMDB stores it in the C memory ctxnid, which must stay
+	// valid until the transaction ends; clearTxn frees it.
+	commitID uintptr
+	ctxnid   *C.size_t
+
 	// Pointer to scratch space for key and val in readonly transactions
 	cbuf unsafe.Pointer
 
@@ -116,6 +122,20 @@ func beginTxn(env *Env, parent *Txn, flags uint) (*Txn, error) {
 	if ret != success {
 		return nil, operrno("mdb_txn_begin", ret)
 	}
+	if flags&Readonly == 0 {
+		// Register C memory for the commit ID (see CommitID).  It cannot be
+		// Go memory because LMDB keeps the pointer until the transaction
+		// ends, and it cannot be shared per Env because another goroutine's
+		// transaction could overwrite it between the writer lock release
+		// inside mdb_txn_commit and commit() reading it.
+		txn.ctxnid = (*C.size_t)(C.malloc(C.size_t(unsafe.Sizeof(C.size_t(0)))))
+		*txn.ctxnid = 0
+		ret = C.mdb_txn_set_commit_txnid(txn._txn, txn.ctxnid)
+		if ret != success {
+			txn.abort()
+			return nil, operrno("mdb_txn_set_commit_txnid", ret)
+		}
+	}
 	return txn, nil
 }
 
@@ -135,6 +155,26 @@ func (txn *Txn) ID() uintptr {
 	}
 
 	return txn.id
+}
+
+// CommitID returns the transaction ID a write transaction was committed as,
+// once Commit has returned nil, and 0 before that.  It is the last committed
+// ID of the environment at the moment the transaction released the writer
+// lock: for a transaction with changes its own ID, which may be higher than
+// ID when the environment splits big freelist records (see
+// Env.SetSplitFreelist); for a transaction with nothing to commit the
+// previously committed ID; for a nested transaction the ID of its parent,
+// whose commit is still pending.  Read-only transactions always return 0.
+// ID cannot provide this value because the C handle is gone when Commit
+// returns, and Env.Info may already report a later transaction of another
+// thread or process.
+//
+// The value is also available after Env.Update and Env.RunTxn return, on a
+// Txn captured from the callback.
+//
+// See mdb_txn_set_commit_txnid.
+func (txn *Txn) CommitID() uintptr {
+	return txn.commitID
 }
 
 func (txn *Txn) getID() uintptr {
@@ -207,6 +247,9 @@ func (txn *Txn) Commit() error {
 
 func (txn *Txn) commit() error {
 	ret := C.mdb_txn_commit(txn._txn)
+	if ret == success && txn.ctxnid != nil {
+		txn.commitID = uintptr(*txn.ctxnid)
+	}
 	txn.clearTxn()
 	return operrno("mdb_txn_commit", ret)
 }
@@ -258,6 +301,13 @@ func (txn *Txn) clearTxn() {
 		txn.val = nil
 		C.free(txn.cbuf)
 		txn.cbuf = nil
+	}
+
+	// Release the commit ID slot of a write transaction; LMDB no longer
+	// references it once the transaction has ended.
+	if txn.ctxnid != nil {
+		C.free(unsafe.Pointer(txn.ctxnid))
+		txn.ctxnid = nil
 	}
 }
 

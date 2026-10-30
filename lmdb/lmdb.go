@@ -105,6 +105,15 @@ uses a finalizer to abort unreachable Txn objects.  But of course, applications
 must still be careful not to leak unterminated Txn objects in a way such that
 they fail get garbage collected.
 
+# Splitting big freelist records (experimental)
+
+This branch bundles an LMDB patch, compiled in with MDB_SPLIT_FREELIST=1, which
+can save the pages a write transaction frees in several freelist records
+instead of one.  It is off by default; Env.SetSplitFreelist opts an environment
+in, and Txn.CommitID reports the transaction ID a write transaction was
+committed as, which can be higher than Txn.ID when records were split.  The
+database format does not change.
+
 # Caveats
 
 Write transactions (those created without the Readonly flag) must be created in
@@ -129,6 +138,7 @@ package lmdb
 /*
 #cgo CFLAGS: -pthread -W -Wall -Wno-unused-parameter -Wno-format-extra-args -Wbad-function-cast -Wno-missing-field-initializers -Wno-stringop-overflow -Wno-unknown-warning-option -O2 -g
 #cgo linux,pwritev CFLAGS: -DMDB_USE_PWRITEV
+#cgo CFLAGS: -DMDB_SPLIT_FREELIST=1
 
 #include "lmdb.h"
 */

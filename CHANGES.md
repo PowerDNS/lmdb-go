@@ -1,5 +1,18 @@
 # Release Change Log
 
+## Unreleased (freelist-split-experiment branch)
+
+Experimental branch on top of v1.9.4, not for production use.
+
+* Upgrade upstream LMDB to 0.9.36 (mdb.RE/0.9 at a69ce88).
+* Bundle the MDB_SPLIT_FREELIST patch and compile it in. `Env.SetSplitFreelist`
+  opts an environment in to saving the pages a write transaction frees in
+  freelist records of at most one page each, so deleting large amounts of data
+  no longer needs a contiguous run of overflow pages. Off by default; the
+  database format does not change.
+* Add `Txn.CommitID`, the transaction ID a write transaction was committed as,
+  which can be higher than `Txn.ID` when records were split.
+
 ## v1.9.4 (2026-09-09)
 
 ### What's Changed

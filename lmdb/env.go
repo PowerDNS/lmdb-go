@@ -340,6 +340,30 @@ func (env *Env) Path() (string, error) {
 	return C.GoString(cpath), nil
 }
 
+// SetSplitFreelist enables or disables splitting of big freelist records,
+// which is off by default.  LMDB saves the pages a write transaction frees in
+// one record of its freelist DB, which needs a contiguous run of overflow
+// pages when there are many of them, so a transaction which only deleted data
+// can fail with MapFull.  When enabled, write transactions begun afterwards
+// save them in records of at most one page each if more than one is needed.
+// Such a transaction commits under a transaction ID which may be higher than
+// the Txn.ID reported inside it; Txn.CommitID reports the ID it ended up
+// with.  A transaction that split its record writes its meta page
+// synchronously, also with WriteMap or NoMetaSync; NoSync, and MapAsync with
+// WriteMap, are not affected.  The setting is not stored in the environment
+// and may be changed before or after Env.Open.  Environments written with it
+// remain readable and writable by LMDB builds without this feature.
+//
+// See mdb_env_set_split_freelist.
+func (env *Env) SetSplitFreelist(on bool) error {
+	var onoff C.int
+	if on {
+		onoff = 1
+	}
+	ret := C.mdb_env_set_split_freelist(env._env, onoff)
+	return operrno("mdb_env_set_split_freelist", ret)
+}
+
 // SetMapSize sets the size of the environment memory map.
 //
 // See mdb_env_set_mapsize.
