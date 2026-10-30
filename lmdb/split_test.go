@@ -26,18 +26,31 @@ func freelistEntries(t *testing.T, env *Env) uint64 {
 }
 
 // TestEnv_SetSplitFreelist frees more pages in one transaction than one
-// freelist record can hold, and checks that the record is split only when
-// the environment opted in, and that CommitID reports the resulting ID.
+// freelist record can hold, and checks that the record is split by default
+// and when enabled explicitly, but not when turned off, and that CommitID
+// reports the resulting ID.
 func TestEnv_SetSplitFreelist(t *testing.T) {
-	for _, split := range []bool{false, true} {
-		t.Run(fmt.Sprintf("split=%v", split), func(t *testing.T) {
+	cases := []struct {
+		name  string
+		set   bool // call SetSplitFreelist
+		split bool
+	}{
+		{"default", false, true},
+		{"off", true, false},
+		{"on", true, true},
+	}
+	for _, c := range cases {
+		split := c.split
+		t.Run(c.name, func(t *testing.T) {
 			env := setup(t)
 			defer clean(env, t)
 			if err := env.SetMapSize(512 << 20); err != nil {
 				t.Fatal(err)
 			}
-			if err := env.SetSplitFreelist(split); err != nil {
-				t.Fatal(err)
+			if c.set {
+				if err := env.SetSplitFreelist(split); err != nil {
+					t.Fatal(err)
+				}
 			}
 			stat, err := env.Stat()
 			if err != nil {

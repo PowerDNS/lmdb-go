@@ -81,6 +81,13 @@ func NewEnv() (*Env, error) {
 	if ret != success {
 		return nil, operrno("mdb_env_create", ret)
 	}
+	// This branch splits big freelist records by default; see
+	// SetSplitFreelist, which turns it off for an environment.
+	ret = C.mdb_env_set_split_freelist(env._env, 1)
+	if ret != success {
+		C.mdb_env_close(env._env)
+		return nil, operrno("mdb_env_set_split_freelist", ret)
+	}
 	env.ckey = (*C.MDB_val)(C.malloc(C.size_t(unsafe.Sizeof(C.MDB_val{}))))
 	env.cval = (*C.MDB_val)(C.malloc(C.size_t(unsafe.Sizeof(C.MDB_val{}))))
 
@@ -340,12 +347,13 @@ func (env *Env) Path() (string, error) {
 	return C.GoString(cpath), nil
 }
 
-// SetSplitFreelist enables or disables splitting of big freelist records,
-// which is off by default.  LMDB saves the pages a write transaction frees in
-// one record of its freelist DB, which needs a contiguous run of overflow
-// pages when there are many of them, so a transaction which only deleted data
-// can fail with MapFull.  When enabled, write transactions begun afterwards
-// save them in records of at most one page each if more than one is needed.
+// SetSplitFreelist enables or disables splitting of big freelist records.
+// On this branch NewEnv enables it; the C library leaves it off unless asked.
+// LMDB saves the pages a write transaction frees in one record of its
+// freelist DB, which needs a contiguous run of overflow pages when there are
+// many of them, so a transaction which only deleted data can fail with
+// MapFull.  When enabled, write transactions begun afterwards save them in
+// records of at most one page each if more than one is needed.
 // Such a transaction commits under a transaction ID which may be higher than
 // the Txn.ID reported inside it; Txn.CommitID reports the ID it ended up
 // with.  A transaction that split its record writes its meta page

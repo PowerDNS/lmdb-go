@@ -109,10 +109,10 @@ they fail get garbage collected.
 
 This branch bundles an LMDB patch, compiled in with MDB_SPLIT_FREELIST=1, which
 can save the pages a write transaction frees in several freelist records
-instead of one.  It is off by default; Env.SetSplitFreelist opts an environment
-in, and Txn.CommitID reports the transaction ID a write transaction was
-committed as, which can be higher than Txn.ID when records were split.  The
-database format does not change.
+instead of one.  NewEnv enables it on this branch, Env.SetSplitFreelist(false)
+turns it off for an environment, and Txn.CommitID reports the transaction ID a
+write transaction was committed as, which can be higher than Txn.ID when
+records were split.  The database format does not change.
 
 # Caveats
 
